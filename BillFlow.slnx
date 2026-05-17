@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/infra/">
+    <File Path="docker-compose.infra.yml" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="BillFlow.InvoiceService/BillFlow.InvoiceService.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,36 @@
+version: '3.9'
+
+networks:
+  billflow-network:
+    external: true
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: billflow-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "BillFlow@1234"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    restart: unless-stopped
+    networks:
+      - billflow-network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: billflow-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: billflow
+      RABBITMQ_DEFAULT_PASS: billflow123
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    restart: unless-stopped
+    networks:
+      - billflow-network
+
+volumes:
+  sqlserver-data:
