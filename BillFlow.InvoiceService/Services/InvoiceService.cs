@@ -1,4 +1,5 @@
-﻿using BillFlow.InvoiceService.Data;
+﻿using BillFlow.Contracts.Tenancy;
+using BillFlow.InvoiceService.Data;
 using BillFlow.InvoiceService.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,21 +8,23 @@ namespace BillFlow.InvoiceService.Services;
 public class InvoiceService : IInvoiceService
 {
     private readonly AppDbContext _db;
+    private readonly ITenantContext _tenant;   // ← injected
     private readonly ILogger<InvoiceService> _logger;
 
-    public InvoiceService(AppDbContext db, ILogger<InvoiceService> logger)
+    public InvoiceService(
+        AppDbContext db,
+        ITenantContext tenant,
+        ILogger<InvoiceService> logger)
     {
         _db = db;
+        _tenant = tenant;
         _logger = logger;
     }
 
     public async Task<IEnumerable<Invoice>> GetAllAsync()
     {
-        _logger.LogInformation("Fetching all invoices from database");
-
-        // AsNoTracking = faster reads when you won't update the data
-        // EF Core doesn't need to track changes for a simple list
         return await _db.Invoices
+            .Where(i => i.TenantId == _tenant.TenantId)  // ← tenant scoped
             .AsNoTracking()
             .OrderByDescending(i => i.CreatedAt)
             .ToListAsync();
@@ -31,23 +34,24 @@ public class InvoiceService : IInvoiceService
     {
         return await _db.Invoices
             .AsNoTracking()
-            .FirstOrDefaultAsync(i => i.Id == id);
-        // Returns null if not found — controller handles the 404
+            // BOTH conditions required — prevents tenant A fetching tenant B's invoice
+            // by guessing an ID even if they somehow bypass the header
+            .FirstOrDefaultAsync(i => i.Id == id && i.TenantId == _tenant.TenantId);
     }
 
     public async Task<Invoice> CreateAsync(Invoice invoice)
     {
+        // Always stamp with the current tenant — never trust the caller to set this
+        invoice.TenantId = _tenant.TenantId;
+        invoice.TaxRate = _tenant.DefaultTaxRate;  // use tenant's configured rate
         invoice.CreatedAt = DateTime.UtcNow;
 
         _db.Invoices.Add(invoice);
-
-        // SaveChangesAsync writes to SQL Server and populates invoice.Id
         await _db.SaveChangesAsync();
 
         _logger.LogInformation(
-            "Created invoice {InvoiceNumber} for {Customer}",
-            invoice.InvoiceNumber,
-            invoice.CustomerName);
+            "Tenant [{TenantId}] created invoice {Number}",
+            _tenant.TenantId, invoice.InvoiceNumber);
 
         return invoice;
     }

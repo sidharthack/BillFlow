@@ -4,6 +4,7 @@ using BillFlow.InvoiceService.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace BillFlow.InvoiceService.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260517112534_AddTenantId")]
+    partial class AddTenantId
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -70,6 +73,42 @@ namespace BillFlow.InvoiceService.Migrations
                         .IsUnique();
 
                     b.ToTable("Invoices", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Amount = 50000m,
+                            CreatedAt = new DateTime(2026, 1, 10, 0, 0, 0, 0, DateTimeKind.Utc),
+                            CustomerName = "Acme Corp",
+                            InvoiceNumber = "INV-001",
+                            PaidAt = new DateTime(2026, 1, 15, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Status = "Paid",
+                            TaxRate = 0.18m,
+                            TenantId = 1
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Amount = 120000m,
+                            CreatedAt = new DateTime(2026, 2, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            CustomerName = "GlobalTech Ltd",
+                            InvoiceNumber = "INV-002",
+                            Status = "Sent",
+                            TaxRate = 0.18m,
+                            TenantId = 1
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Amount = 25000m,
+                            CreatedAt = new DateTime(2026, 3, 5, 0, 0, 0, 0, DateTimeKind.Utc),
+                            CustomerName = "StartupXYZ",
+                            InvoiceNumber = "INV-003",
+                            Status = "Draft",
+                            TaxRate = 0.18m,
+                            TenantId = 1
+                        });
                 });
 #pragma warning restore 612, 618
         }
