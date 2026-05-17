@@ -4,5 +4,6 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="BillFlow.InvoiceService/BillFlow.InvoiceService.csproj" />
+    <Project Path="BillFlow.TenantService/BillFlow.TenantService.csproj" Id="d69dfc45-3fe3-479c-9e3c-8086ce771417" />
   </Folder>
 </Solution>
