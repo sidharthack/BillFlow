@@ -1,4 +1,5 @@
-﻿using BillFlow.IdentityService.Data;
+﻿using BillFlow.Contracts.Tenancy;
+using BillFlow.IdentityService.Data;
 using BillFlow.IdentityService.DTOs;
 using BillFlow.IdentityService.Models;
 using Microsoft.EntityFrameworkCore;

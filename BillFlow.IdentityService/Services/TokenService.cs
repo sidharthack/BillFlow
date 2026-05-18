@@ -2,6 +2,7 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using BillFlow.Contracts.Tenancy;
 using BillFlow.IdentityService.Models;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;

@@ -1,10 +1,12 @@
 ﻿using BillFlow.InvoiceService.DTOs;
 using BillFlow.InvoiceService.Models;
 using BillFlow.InvoiceService.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BillFlow.InvoiceService.Controllers;
 
+[Authorize]           // ← every endpoint in this controller requires a valid JWT
 [ApiController]
 [Route("[controller]")]
 public class InvoiceController : ControllerBase
