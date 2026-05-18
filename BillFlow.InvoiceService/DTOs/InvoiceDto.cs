@@ -1,20 +1,59 @@
 ﻿namespace BillFlow.InvoiceService.DTOs;
 
-// What comes OUT of the API (response)
 public record InvoiceResponse(
     int Id,
     string InvoiceNumber,
+    int CustomerId,
     string CustomerName,
-    decimal Amount,
+    string CustomerEmail,
+    string? CustomerGstNumber,
+    decimal SubTotal,
     decimal TaxRate,
+    decimal TaxAmount,
     decimal TotalAmount,
+    string Currency,
     string Status,
-    DateTime CreatedAt
+    string? Notes,
+    DateTime CreatedAt,
+    DateTime? SentAt,
+    DateTime? PaidAt,
+    DateTime? DueDate,
+    DateTime? CancelledAt,
+    List<LineItemResponse> LineItems,
+    List<InvoiceEventResponse> Events
 );
 
-// What comes IN to create an invoice (request body)
+public record LineItemResponse(
+    int Id,
+    string Description,
+    int Quantity,
+    decimal UnitPrice,
+    decimal Amount
+);
+
+public record InvoiceEventResponse(
+    string FromStatus,
+    string ToStatus,
+    string? Note,
+    DateTime OccurredAt
+);
+
+// Request to create invoice — must include at least one line item
 public record CreateInvoiceRequest(
-    string CustomerName,
-    decimal Amount,
-    decimal TaxRate
+    int CustomerId,
+    List<CreateLineItemRequest> LineItems,
+    string? Notes,
+    DateTime? DueDate
+);
+
+public record CreateLineItemRequest(
+    string Description,
+    int Quantity,
+    decimal UnitPrice
+);
+
+// Request to transition status
+public record TransitionRequest(
+    string ToStatus,
+    string? Note
 );

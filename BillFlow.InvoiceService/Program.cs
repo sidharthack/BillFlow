@@ -72,7 +72,15 @@ builder.Services.AddHttpClient("TenantService", client =>
         builder.Configuration["ServiceUrls:TenantService"] ?? "http://localhost:5001");
     client.Timeout = TimeSpan.FromSeconds(5);
 });
-
+builder.Services.AddHttpClient("CustomerService", client =>
+{
+    client.BaseAddress = new Uri(
+        builder.Configuration["ServiceUrls:CustomerService"] ?? "http://localhost:5003");
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+// Add with business services
+builder.Services.AddScoped<IInvoiceNumberService, InvoiceNumberService>();
+builder.Services.AddScoped<ICustomerClient, CustomerClient>();
 // Business services
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 

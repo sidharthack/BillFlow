@@ -1,5 +1,4 @@
 ﻿using BillFlow.InvoiceService.DTOs;
-using BillFlow.InvoiceService.Models;
 using BillFlow.InvoiceService.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,70 +11,72 @@ namespace BillFlow.InvoiceService.Controllers;
 public class InvoiceController : ControllerBase
 {
     private readonly IInvoiceService _invoiceService;
-    private readonly ILogger<InvoiceController> _logger;
 
-    public InvoiceController(
-        IInvoiceService invoiceService,
-        ILogger<InvoiceController> logger)
+    public InvoiceController(IInvoiceService invoiceService)
     {
         _invoiceService = invoiceService;
-        _logger = logger;
     }
 
-    // All authenticated users can list invoices
     [HttpGet]
-    [Authorize(Policy = "CanRead")]
     public async Task<IActionResult> GetAll()
     {
         var invoices = await _invoiceService.GetAllAsync();
-        var response = invoices.Select(MapToResponse);
-        return Ok(response);
+        return Ok(invoices);
     }
 
     [HttpGet("{id:int}")]
-    [Authorize(Policy = "CanRead")]
     public async Task<IActionResult> GetById(int id)
     {
         var invoice = await _invoiceService.GetByIdAsync(id);
         if (invoice is null)
             return NotFound(new { message = $"Invoice {id} not found" });
-        return Ok(MapToResponse(invoice));
+        return Ok(invoice);
     }
 
-    // Only Admins and Members can create
     [HttpPost]
-    [Authorize(Policy = "CanWrite")]
+    [Authorize(Roles = "Admin,Member")]
     public async Task<IActionResult> Create([FromBody] CreateInvoiceRequest request)
     {
-        var invoice = new Invoice
-        {
-            InvoiceNumber = $"INV-{DateTime.UtcNow:yyyyMMddHHmmss}",
-            CustomerName = request.CustomerName,
-            Amount = request.Amount,
-            TaxRate = request.TaxRate,
-            Status = InvoiceStatus.Draft
-        };
+        // Extract bearer token to forward to CustomerService
+        var bearerToken = HttpContext.Request.Headers["Authorization"]
+            .FirstOrDefault()
+            ?.Replace("Bearer ", "") ?? string.Empty;
 
-        var created = await _invoiceService.CreateAsync(invoice);
-        return CreatedAtAction(nameof(GetById),
-            new { id = created.Id }, MapToResponse(created));
+        try
+        {
+            var invoice = await _invoiceService.CreateAsync(request, bearerToken);
+            return CreatedAtAction(nameof(GetById), new { id = invoice.Id }, invoice);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
-    // Only Admins can cancel
+    // POST /invoice/5/transition  { "toStatus": "Sent", "note": "optional" }
+    [HttpPost("{id:int}/transition")]
+    [Authorize(Roles = "Admin,Member")]
+    public async Task<IActionResult> Transition(
+        int id, [FromBody] TransitionRequest request)
+    {
+        try
+        {
+            var invoice = await _invoiceService.TransitionAsync(id, request);
+            if (invoice is null)
+                return NotFound(new { message = $"Invoice {id} not found" });
+            return Ok(invoice);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpDelete("{id:int}")]
-    [Authorize(Policy = "AdminOnly")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Cancel(int id)
     {
-        var invoice = await _invoiceService.GetByIdAsync(id);
-        if (invoice is null)
-            return NotFound(new { message = $"Invoice {id} not found" });
-
         await _invoiceService.CancelAsync(id);
         return NoContent();
     }
-
-    private static InvoiceResponse MapToResponse(Invoice i) => new(
-        i.Id, i.InvoiceNumber, i.CustomerName,
-        i.Amount, i.TaxRate, i.TotalAmount,
-        i.Status.ToString(), i.CreatedAt);
 }

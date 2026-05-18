@@ -1,12 +1,13 @@
-﻿using BillFlow.InvoiceService.Models;
+﻿using BillFlow.InvoiceService.DTOs;
+using BillFlow.InvoiceService.Models;
 
 namespace BillFlow.InvoiceService.Services;
 
 public interface IInvoiceService
 {
-    Task<IEnumerable<Invoice>> GetAllAsync();
-    Task<Invoice?> GetByIdAsync(int id);
-    Task<Invoice> CreateAsync(Invoice invoice);
-    Task CancelAsync(int id);               // ← ADD
-
+    Task<IEnumerable<InvoiceResponse>> GetAllAsync();
+    Task<InvoiceResponse?> GetByIdAsync(int id);
+    Task<InvoiceResponse> CreateAsync(CreateInvoiceRequest request, string bearerToken);
+    Task<InvoiceResponse?> TransitionAsync(int id, TransitionRequest request);
+    Task CancelAsync(int id);
 }
