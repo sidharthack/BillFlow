@@ -55,4 +55,18 @@ public class InvoiceService : IInvoiceService
 
         return invoice;
     }
+    public async Task CancelAsync(int id)
+    {
+        var invoice = await _db.Invoices
+            .FirstOrDefaultAsync(i => i.Id == id && i.TenantId == _tenant.TenantId);
+
+        if (invoice is null) return;
+
+        invoice.Status = InvoiceStatus.Cancelled;
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Tenant [{TenantId}] cancelled invoice {Id}",
+            _tenant.TenantId, id);
+    }
 }

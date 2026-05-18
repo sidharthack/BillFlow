@@ -7,4 +7,6 @@ public interface IInvoiceService
     Task<IEnumerable<Invoice>> GetAllAsync();
     Task<Invoice?> GetByIdAsync(int id);
     Task<Invoice> CreateAsync(Invoice invoice);
+    Task CancelAsync(int id);               // ← ADD
+
 }

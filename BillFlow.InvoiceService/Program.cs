@@ -45,7 +45,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // Only Admins can delete or cancel invoices
+    options.AddPolicy("AdminOnly", policy =>
+        policy.RequireRole("Admin"));
+
+    // Admins and Members can create/send invoices
+    options.AddPolicy("CanWrite", policy =>
+        policy.RequireRole("Admin", "Member"));
+
+    // All authenticated users can read
+    options.AddPolicy("CanRead", policy =>
+        policy.RequireAuthenticatedUser());
+});
 
 // Tenant context — scoped per request
 builder.Services.AddScoped<TenantContext>();
