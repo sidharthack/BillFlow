@@ -1,93 +1,105 @@
 ﻿using BillFlow.InvoiceService.DTOs;
-using BillFlow.InvoiceService.Models;
 using BillFlow.InvoiceService.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BillFlow.InvoiceService.Controllers;
 
-[Authorize]           // ← every endpoint in this controller requires a valid JWT
+[Authorize]
 [ApiController]
 [Route("[controller]")]
 public class InvoiceController : ControllerBase
 {
     private readonly IInvoiceService _invoiceService;
-    private readonly ILogger<InvoiceController> _logger;
 
-    public InvoiceController(IInvoiceService invoiceService, ILogger<InvoiceController> logger)
+    public InvoiceController(IInvoiceService invoiceService)
     {
         _invoiceService = invoiceService;
-        _logger = logger;
     }
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
         var invoices = await _invoiceService.GetAllAsync();
-
-        var response = invoices.Select(i => new InvoiceResponse(
-            i.Id,
-            i.InvoiceNumber,
-            i.CustomerName,
-            i.Amount,
-            i.TaxRate,
-            i.TotalAmount,  
-            i.Status.ToString(),
-            i.CreatedAt
-        ));
-
-        return Ok(response);
+        return Ok(invoices);
     }
 
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {
         var invoice = await _invoiceService.GetByIdAsync(id);
-
         if (invoice is null)
             return NotFound(new { message = $"Invoice {id} not found" });
-
-        return Ok(new InvoiceResponse(
-            invoice.Id,
-            invoice.InvoiceNumber,
-            invoice.CustomerName,
-            invoice.Amount,
-            invoice.TaxRate,
-            invoice.TotalAmount,
-            invoice.Status.ToString(),
-            invoice.CreatedAt
-        ));
+        return Ok(invoice);
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin,Member")]
     public async Task<IActionResult> Create([FromBody] CreateInvoiceRequest request)
     {
-        var invoiceNumber = $"INV-{DateTime.UtcNow:yyyyMMddHHmmss}";
+        // Extract bearer token to forward to CustomerService
+        var bearerToken = HttpContext.Request.Headers["Authorization"]
+            .FirstOrDefault()
+            ?.Replace("Bearer ", "") ?? string.Empty;
 
-        var invoice = new Invoice
+        try
         {
-            InvoiceNumber = invoiceNumber,
-            CustomerName = request.CustomerName,
-            Amount = request.Amount,
-            TaxRate = request.TaxRate,
-            Status = InvoiceStatus.Draft
-        };
+            var invoice = await _invoiceService.CreateAsync(request, bearerToken);
+            return CreatedAtAction(nameof(GetById), new { id = invoice.Id }, invoice);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 
-        var created = await _invoiceService.CreateAsync(invoice);
+    // POST /invoice/5/transition  { "toStatus": "Sent", "note": "optional" }
+    [HttpPost("{id:int}/transition")]
+    [Authorize(Roles = "Admin,Member")]
+    public async Task<IActionResult> Transition(
+        int id, [FromBody] TransitionRequest request)
+    {
+        try
+        {
+            var invoice = await _invoiceService.TransitionAsync(id, request);
+            if (invoice is null)
+                return NotFound(new { message = $"Invoice {id} not found" });
+            return Ok(invoice);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 
-        return CreatedAtAction(
-            nameof(GetById),
-            new { id = created.Id },
-            new InvoiceResponse(
-                created.Id,
-                created.InvoiceNumber,
-                created.CustomerName,
-                created.Amount,
-                created.TaxRate,
-                created.TotalAmount,
-                created.Status.ToString(),
-                created.CreatedAt
-            )
-        );
+    [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Cancel(int id)
+    {
+        await _invoiceService.CancelAsync(id);
+        return NoContent();
+    }
+
+    // GET /invoice/5/pdf
+    [HttpGet("{id:int}/pdf")]
+    public async Task<IActionResult> DownloadPdf(
+        [FromServices] IPdfService pdfService,
+        int id)
+    {
+        try
+        {
+            var pdfBytes = await pdfService.GenerateInvoicePdfAsync(id);
+
+            // Return as downloadable PDF file
+            return File(
+                pdfBytes,
+                "application/pdf",
+                $"invoice-{id}.pdf"
+            );
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
     }
 }
