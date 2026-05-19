@@ -1,6 +1,7 @@
 ﻿using BillFlow.Contracts.Tenancy;
 using BillFlow.InvoiceService.Data;
 using BillFlow.InvoiceService.DTOs;
+using BillFlow.InvoiceService.Messaging;
 using BillFlow.InvoiceService.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,18 +14,21 @@ public class InvoiceService : IInvoiceService
     private readonly IInvoiceNumberService _invoiceNumberService;
     private readonly ICustomerClient _customerClient;
     private readonly ILogger<InvoiceService> _logger;
+    private readonly IEventPublisher _publisher;
 
     public InvoiceService(
         AppDbContext db,
         ITenantContext tenant,
         IInvoiceNumberService invoiceNumberService,
         ICustomerClient customerClient,
+        IEventPublisher publisher,           // ← ADD
         ILogger<InvoiceService> logger)
     {
         _db = db;
         _tenant = tenant;
         _invoiceNumberService = invoiceNumberService;
         _customerClient = customerClient;
+        _publisher = publisher;              // ← ADD
         _logger = logger;
     }
 
@@ -112,7 +116,21 @@ public class InvoiceService : IInvoiceService
 
         _db.Invoices.Add(invoice);
         await _db.SaveChangesAsync();
-
+        // Publish InvoiceCreated event
+        await _publisher.PublishAsync(
+            new BillFlow.Contracts.Events.InvoiceCreatedEvent(
+                invoice.Id,
+                invoice.TenantId,
+                _tenant.TenantSlug,
+                invoice.InvoiceNumber,
+                invoice.CustomerName,
+                invoice.CustomerEmail,
+                invoice.TotalAmount,
+                invoice.Currency,
+                invoice.CreatedAt
+            ),
+            routingKey: "invoice.created"
+        );
         _logger.LogInformation(
             "Tenant [{TenantId}] created invoice {Number} for customer {Customer}",
             _tenant.TenantId, invoice.InvoiceNumber, customer.Name);
@@ -140,7 +158,42 @@ public class InvoiceService : IInvoiceService
         InvoiceStatusMachine.Transition(invoice, toStatus, request.Note);
 
         await _db.SaveChangesAsync();
-
+        // Publish event based on new status
+        if (toStatus == InvoiceStatus.Sent)
+        {
+            await _publisher.PublishAsync(
+                new BillFlow.Contracts.Events.InvoiceSentEvent(
+                    invoice.Id,
+                    invoice.TenantId,
+                    _tenant.TenantSlug,
+                    invoice.InvoiceNumber,
+                    invoice.CustomerName,
+                    invoice.CustomerEmail,
+                    invoice.TotalAmount,
+                    invoice.Currency,
+                    invoice.DueDate,
+                    invoice.SentAt!.Value
+                ),
+                routingKey: "invoice.sent"
+            );
+        }
+        else if (toStatus == InvoiceStatus.Paid)
+        {
+            await _publisher.PublishAsync(
+                new BillFlow.Contracts.Events.InvoicePaidEvent(
+                    invoice.Id,
+                    invoice.TenantId,
+                    _tenant.TenantSlug,
+                    invoice.InvoiceNumber,
+                    invoice.CustomerName,
+                    invoice.CustomerEmail,
+                    invoice.TotalAmount,
+                    invoice.Currency,
+                    invoice.PaidAt!.Value
+                ),
+                routingKey: "invoice.paid"
+            );
+        }
         _logger.LogInformation(
             "Invoice {Number} transitioned to {Status}",
             invoice.InvoiceNumber, toStatus);
