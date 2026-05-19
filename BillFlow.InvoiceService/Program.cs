@@ -1,4 +1,3 @@
-using System.Text;
 using BillFlow.Contracts.Tenancy;
 using BillFlow.InvoiceService.Data;
 using BillFlow.InvoiceService.Middleware;
@@ -6,6 +5,10 @@ using BillFlow.InvoiceService.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using QuestPDF.Infrastructure;
+using System.Text;
+// Add as the very first line before WebApplication.CreateBuilder
+QuestPDF.Settings.License = LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -83,7 +86,7 @@ builder.Services.AddScoped<IInvoiceNumberService, InvoiceNumberService>();
 builder.Services.AddScoped<ICustomerClient, CustomerClient>();
 // Business services
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
-
+builder.Services.AddScoped<IPdfService, PdfService>();
 var app = builder.Build();
 
 

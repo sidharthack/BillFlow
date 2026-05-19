@@ -79,4 +79,27 @@ public class InvoiceController : ControllerBase
         await _invoiceService.CancelAsync(id);
         return NoContent();
     }
+
+    // GET /invoice/5/pdf
+    [HttpGet("{id:int}/pdf")]
+    public async Task<IActionResult> DownloadPdf(
+        [FromServices] IPdfService pdfService,
+        int id)
+    {
+        try
+        {
+            var pdfBytes = await pdfService.GenerateInvoicePdfAsync(id);
+
+            // Return as downloadable PDF file
+            return File(
+                pdfBytes,
+                "application/pdf",
+                $"invoice-{id}.pdf"
+            );
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+    }
 }
