@@ -1,13 +1,15 @@
 using System.Threading.RateLimiting;
 using BillFlow.Gateway.Endpoints;
 using BillFlow.Gateway.Middleware;
+using BillFlow.Gateway.Transforms;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ── YARP reverse proxy ────────────────────────────────────────────────────
+// ── YARP with programmatic transforms ────────────────────────────────────
 builder.Services
     .AddReverseProxy()
-    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
+    .AddTransforms<GatewayTransformProvider>();  // ← register transform provider
 
 // ── Rate limiting ─────────────────────────────────────────────────────────
 var rateLimitConfig = builder.Configuration.GetSection("RateLimiting");
@@ -17,14 +19,12 @@ var queueLimit = rateLimitConfig.GetValue<int>("QueueLimit", 10);
 
 builder.Services.AddRateLimiter(options =>
 {
-    // Global fixed-window limiter — applies to all routes
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+    // Standard API policy
+    options.AddPolicy("standard", context =>
     {
-        // Partition by IP address — each client gets its own bucket
         var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-
         return RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: clientIp,
+            partitionKey: $"standard_{clientIp}",
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = permitLimit,
@@ -34,17 +34,45 @@ builder.Services.AddRateLimiter(options =>
             });
     });
 
-    // Return 429 with helpful headers when limit is exceeded
+    // Auth policy — strict
+    options.AddPolicy("auth", context =>
+    {
+        var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: $"auth_{clientIp}",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromSeconds(60),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 2
+            });
+    });
+
+    // PDF policy
+    options.AddPolicy("pdf", context =>
+    {
+        var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: $"pdf_{clientIp}",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromSeconds(60),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 5
+            });
+    });
+
     options.OnRejected = async (context, cancellationToken) =>
     {
         context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         context.HttpContext.Response.Headers["Retry-After"] = windowSeconds.ToString();
-
         await context.HttpContext.Response.WriteAsJsonAsync(new
         {
             error = "Rate limit exceeded",
             retryAfterSeconds = windowSeconds,
-            message = $"Maximum {permitLimit} requests per {windowSeconds}s window"
+            message = $"Too many requests. Retry after {windowSeconds} seconds."
         }, cancellationToken);
     };
 });
@@ -55,17 +83,16 @@ builder.Services.AddHttpClient("HealthCheck", client =>
     client.Timeout = TimeSpan.FromSeconds(3);
 });
 
-// ── CORS — allow frontend apps to call the gateway ────────────────────────
+// ── CORS ──────────────────────────────────────────────────────────────────
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("BillFlowPolicy", policy =>
     {
         policy
             .WithOrigins(
-                "http://localhost:3000",   // React dev server
-                "http://localhost:4200",   // Angular dev server
-                "https://app.billflow.io"  // Production frontend
-            )
+                "http://localhost:3000",
+                "http://localhost:4200",
+                "https://app.billflow.io")
             .AllowAnyMethod()
             .AllowAnyHeader()
             .AllowCredentials();
@@ -74,18 +101,23 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// ── Middleware pipeline ───────────────────────────────────────────────────
-// Order is critical — each layer wraps the next
+// ── Middleware pipeline (order matters) ───────────────────────────────────
 
-app.UseMiddleware<CorrelationIdMiddleware>();    // 1. Stamp correlation ID
-app.UseMiddleware<GatewayLoggingMiddleware>();   // 2. Log request/response
-app.UseCors("BillFlowPolicy");                  // 3. CORS headers
-app.UseRateLimiter();                           // 4. Rate limit check
+app.UseMiddleware<CorrelationIdMiddleware>();       // 1. Correlation ID first
+app.UseMiddleware<SecurityHeadersMiddleware>();     // 2. Security headers
+app.UseMiddleware<GatewayLoggingMiddleware>();      // 3. Log with correlation ID
+app.UseMiddleware<RequestSizeLimitMiddleware>();    // 4. Reject oversized payloads
+app.UseCors("BillFlowPolicy");                     // 5. CORS
+app.UseRateLimiter();                              // 6. Rate limiting
 
-// 5. Health endpoints (before YARP so they're handled by gateway)
+// 7. Health endpoints (handled by gateway — not proxied)
 app.MapHealthEndpoints();
 
-// 6. YARP handles everything else — routes to downstream services
-app.MapReverseProxy();
+// 8. YARP proxy — handles all /api/* routes
+app.MapReverseProxy(pipeline =>
+{
+    // Add rate limit policy filter inside YARP pipeline
+    pipeline.UseMiddleware<RateLimitPolicyFilter>();
+});
 
 app.Run();
