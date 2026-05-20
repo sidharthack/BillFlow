@@ -1,0 +1,71 @@
+# Base URLs (update ports as needed)
+$authUrl = "https://localhost:5002/auth/login"
+$customerUrl = "https://localhost:5003/customer"
+$invoiceUrl = "https://localhost:5000/invoice"
+
+# ── 1. Login ──────────────────────────────────────────────────────────────
+$loginBody = @{
+    tenantSlug = "acme-corporation"
+    email      = "admin@acme.com"
+    password   = "Admin@1234"
+} | ConvertTo-Json
+
+$loginResponse = Invoke-RestMethod -Uri $authUrl -Method Post -ContentType "application/json" -Body $loginBody
+$token = $loginResponse.accessToken
+$headers = @{ Authorization = "Bearer $token" }
+
+# ── 2. Create customer ────────────────────────────────────────────────────
+$customerBody = @{
+    name      = "Tata Consultancy"
+    email     = "billing@tcs.com"
+    gstNumber = "27AAACT2727Q1ZW"
+} | ConvertTo-Json
+
+$customerResponse = Invoke-RestMethod -Uri $customerUrl -Method Post -ContentType "application/json" -Headers $headers -Body $customerBody
+$customerId = $customerResponse.id
+Write-Host "Customer ID: $customerId"
+
+# ── 3. Create invoice with multiple line items ─────────────────────────────
+$invoiceBody = @{
+    customerId = $customerId
+    notes      = "Q2 2026 Development Services"
+    dueDate    = "2026-07-19T00:00:00Z"
+    lineItems  = @(
+        @{ description = "Backend Development"; quantity = 80; unitPrice = 2500 },
+        @{ description = "DevOps & CI/CD Setup"; quantity = 20; unitPrice = 3000 },
+        @{ description = "Code Review"; quantity = 10; unitPrice = 2000 }
+    )
+} | ConvertTo-Json -Depth 5
+
+$invoiceResponse = Invoke-RestMethod -Uri $invoiceUrl -Method Post -ContentType "application/json" -Headers $headers -Body $invoiceBody
+$invoiceId = $invoiceResponse.id
+$invoiceNumber = $invoiceResponse.invoiceNumber
+Write-Host "Invoice: $invoiceNumber (ID: $invoiceId)"
+
+# ── 4. Download the PDF ───────────────────────────────────────────────────
+$pdfPath = "C:\Dev\invoice-week3.pdf"
+Invoke-WebRequest -Uri "$invoiceUrl/$invoiceId/pdf" -Headers $headers -OutFile $pdfPath
+Start-Process $pdfPath
+
+# ── 5. Transition Draft → Sent ────────────────────────────────────────────
+$transitionSentBody = @{
+    toStatus = "Sent"
+    note     = "Sent via email on $(Get-Date -Format 'yyyy-MM-dd')"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "$invoiceUrl/$invoiceId/transition" -Method Post -ContentType "application/json" -Headers $headers -Body $transitionSentBody
+
+# Check RabbitMQ UI — invoice.sent event should appear in the exchange
+
+# ── 6. Transition Sent → Paid ─────────────────────────────────────────────
+$transitionPaidBody = @{
+    toStatus = "Paid"
+    note     = "NEFT received - UTR 2026051900001"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "$invoiceUrl/$invoiceId/transition" -Method Post -ContentType "application/json" -Headers $headers -Body $transitionPaidBody
+
+# ── 7. Fetch final invoice — full audit trail ─────────────────────────────
+$finalInvoice = Invoke-RestMethod -Uri "$invoiceUrl/$invoiceId" -Headers $headers
+$finalInvoice | ConvertTo-Json -Depth 5 | Out-File "C:\Dev\invoice-final.json"
+Write-Host "Final invoice saved to C:\Dev\invoice-final.json"

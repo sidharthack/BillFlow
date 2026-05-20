@@ -1,9 +1,13 @@
 <Solution>
+  <Folder Name="/help_doc/">
+    <File Path="Test_Flow_CURL.txt" />
+  </Folder>
   <Folder Name="/infra/">
     <File Path="docker-compose.infra.yml" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="BillFlow.CustomerService/BillFlow.CustomerService.csproj" Id="517552c3-083f-42d4-9d0d-bf1e8f6b1c98" />
+    <Project Path="BillFlow.Gateway/BillFlow.Gateway.csproj" Id="48e9f51a-9933-4d15-8bb8-3b31d09ea457" />
     <Project Path="BillFlow.IdentityService/BillFlow.IdentityService.csproj" Id="6439bbd4-072e-4c27-81f9-55cbb8cfa2b7" />
     <Project Path="BillFlow.InvoiceService/BillFlow.InvoiceService.csproj" />
     <Project Path="BillFlow.TenantService/BillFlow.TenantService.csproj" Id="d69dfc45-3fe3-479c-9e3c-8086ce771417" />
