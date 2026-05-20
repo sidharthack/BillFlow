@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/help_doc/">
+    <File Path="Test_Flow_CURL.txt" />
+  </Folder>
   <Folder Name="/infra/">
     <File Path="docker-compose.infra.yml" />
   </Folder>
