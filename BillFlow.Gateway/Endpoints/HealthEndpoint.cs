@@ -7,7 +7,9 @@ public static class HealthEndpoint
         ("InvoiceService",   "https://localhost:5000/health"),
         ("TenantService",    "https://localhost:5001/health"),
         ("IdentityService",  "https://localhost:5002/health"),
-        ("CustomerService",  "https://localhost:5003/health")
+        ("CustomerService",  "https://localhost:5003/health"),
+        ("NotificationService", "https://localhost:5004/health")   // ← ADD
+
     ];
 
     public static void MapHealthEndpoints(this WebApplication app)

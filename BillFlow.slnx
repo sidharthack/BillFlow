@@ -7,6 +7,7 @@
     <Project Path="BillFlow.Gateway/BillFlow.Gateway.csproj" Id="48e9f51a-9933-4d15-8bb8-3b31d09ea457" />
     <Project Path="BillFlow.IdentityService/BillFlow.IdentityService.csproj" Id="6439bbd4-072e-4c27-81f9-55cbb8cfa2b7" />
     <Project Path="BillFlow.InvoiceService/BillFlow.InvoiceService.csproj" />
+    <Project Path="BillFlow.NotificationService/BillFlow.NotificationService.csproj" Id="ef059740-c21d-4896-907a-fc51735421aa" />
     <Project Path="BillFlow.TenantService/BillFlow.TenantService.csproj" Id="d69dfc45-3fe3-479c-9e3c-8086ce771417" />
   </Folder>
   <Folder Name="/src/Contracts/">

@@ -31,6 +31,17 @@ services:
     restart: unless-stopped
     networks:
       - billflow-network
-
+  seq:
+    image: datalust/seq:latest
+    container_name: billflow-seq
+    environment:
+      ACCEPT_EULA: "Y"
+    ports:
+      - "5341:80"     # Seq UI
+      - "5342:5341"   # Serilog ingestion port
+    restart: unless-stopped
+    networks:
+      - billflow-network
 volumes:
   sqlserver-data:
+  
