@@ -1,25 +1,47 @@
+using BillFlow.Contracts.Logging;
 using BillFlow.TenantService.Data;
 using BillFlow.TenantService.Services;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+const string ServiceName = "TenantService";
+// Use: "TenantService", "", "CustomerService",
+//      "NotificationService" in respective services
 
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
+SerilogBootstrap.Configure(ServiceName);
+try
+{
 
-builder.Services.AddDbContext<TenantDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection"),
-        sql => sql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null)
-    )
-);
+    var builder = WebApplication.CreateBuilder(args);
+    SerilogBootstrap.ConfigureBuilder(builder, ServiceName);
 
-builder.Services.AddScoped<ITenantService, TenantService>();
+    builder.Services.AddControllers();
+    builder.Services.AddEndpointsApiExplorer();
 
-var app = builder.Build();
+    builder.Services.AddDbContext<TenantDbContext>(options =>
+        options.UseSqlServer(
+            builder.Configuration.GetConnectionString("DefaultConnection"),
+            sql => sql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null)
+        )
+    );
 
-app.UseHttpsRedirection();
-app.UseAuthorization();
-app.MapControllers();
+    builder.Services.AddScoped<ITenantService, TenantService>();
 
-app.Run();
+    var app = builder.Build();
+
+    app.UseHttpsRedirection();
+    app.UseMiddleware<ServiceCorrelationMiddleware>();
+
+    app.UseAuthorization();
+    app.MapControllers();
+
+    app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "{ServiceName} terminated unexpectedly", ServiceName);
+}
+finally
+{
+    Log.CloseAndFlush();
+}

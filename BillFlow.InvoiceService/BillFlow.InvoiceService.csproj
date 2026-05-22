@@ -20,8 +20,14 @@
 		</PackageReference>
 		<PackageReference Include="QuestPDF" Version="2026.5.0" />
 		<PackageReference Include="RabbitMQ.Client" Version="7.2.1" />
+		<PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+		<PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+		<PackageReference Include="Serilog.Enrichers.Process" Version="3.0.0" />
+		<PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0" />
+		<PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+		<PackageReference Include="Serilog.Sinks.Seq" Version="9.1.0" />
 	</ItemGroup>
 	<ItemGroup>
-	  <ProjectReference Include="..\BillFlow.Contracts\BillFlow.Contracts.csproj" />
+		<ProjectReference Include="..\BillFlow.Contracts\BillFlow.Contracts.csproj" />
 	</ItemGroup>
 </Project>
