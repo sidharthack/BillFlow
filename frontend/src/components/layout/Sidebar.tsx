@@ -18,10 +18,10 @@ const nav = [
   { to: '/invoices',  icon: FileText,        label: 'Invoices'  },
   { to: '/settings',  icon: Settings,        label: 'Settings'  },
 ];
-const { data: invoices = [] } = useInvoices();
-const overdueCount = invoices.filter(i => i.status === 'Overdue').length;
 
 export function Sidebar() {
+  const { data: invoices = [] } = useInvoices();
+  const overdueCount = invoices.filter(i => i.status === 'Overdue').length;
   const { user, logout } = useAuth();
 
   return (
@@ -36,10 +36,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-       
-
-// Update the Invoices nav item render:
-{nav.map(({ to, icon: Icon, label }) => (
+        {nav.map(({ to, icon: Icon, label }) => (
   <NavLink
     key={to}
     to={to}

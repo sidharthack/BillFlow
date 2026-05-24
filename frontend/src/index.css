@@ -16,3 +16,102 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* Form controls */
+.label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #374151;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.input,
+textarea.input,
+select.input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 0.85rem;
+  border: 1px solid #d1d5db;
+  background-color: #ffffff;
+  color: #111827;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.input:focus,
+textarea.input:focus,
+select.input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+}
+
+textarea.input {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.input::placeholder,
+textarea.input::placeholder {
+  color: #9ca3af;
+}
+
+input[type='number'].input {
+  -moz-appearance: textfield;
+}
+
+input[type='number'].input::-webkit-outer-spin-button,
+input[type='number'].input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.card {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 1.25rem;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+}
+
+.btn-primary,
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  border-radius: 0.9rem;
+  font-weight: 600;
+  transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-primary {
+  background-color: #4f46e5;
+  color: #ffffff;
+  border: 1px solid transparent;
+  box-shadow: 0 10px 20px rgba(79, 70, 229, 0.16);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: #4338ca;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background-color: #ffffff;
+  color: #4338ca;
+  border: 1px solid #c7d2fe;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: #eef2ff;
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
