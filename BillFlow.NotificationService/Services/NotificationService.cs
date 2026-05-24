@@ -11,17 +11,20 @@ public class NotificationService : INotificationService
     private readonly IEmailService _emailService;
     private readonly NotificationDbContext _db;
     private readonly IConfiguration _config;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<NotificationService> _logger;
 
     public NotificationService(
         IEmailService emailService,
         NotificationDbContext db,
         IConfiguration config,
+            IHttpClientFactory httpClientFactory,   // ← ADD
         ILogger<NotificationService> logger)
     {
         _emailService = emailService;
         _db = db;
         _config = config;
+        _httpClientFactory = httpClientFactory; // ← ADD
         _logger = logger;
     }
 
@@ -160,16 +163,13 @@ public class NotificationService : INotificationService
 
     private async Task<string> GetCompanyNameAsync(string tenantSlug)
     {
-        // Try to fetch branding from TenantService
-        // Fall back to slug if unreachable
         try
         {
-            using var http = new HttpClient();
-            var tenantUrl = _config["ServiceUrls:TenantService"] ?? "http://localhost:5001";
-            var response = await http.GetAsync($"{tenantUrl}/tenant/{tenantSlug}");
+            // ← Use named client with Polly instead of raw new HttpClient()
+            var client = _httpClientFactory.CreateClient("TenantService");
+            var response = await client.GetAsync($"/tenant/{tenantSlug}");
 
-            if (!response.IsSuccessStatusCode)
-                return tenantSlug;
+            if (!response.IsSuccessStatusCode) return tenantSlug;
 
             using var stream = await response.Content.ReadAsStreamAsync();
             using var doc = await JsonDocument.ParseAsync(stream);
