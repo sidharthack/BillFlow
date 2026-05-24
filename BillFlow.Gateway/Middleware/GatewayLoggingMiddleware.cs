@@ -1,4 +1,6 @@
-﻿namespace BillFlow.Gateway.Middleware;
+﻿using Serilog.Context;
+
+namespace BillFlow.Gateway.Middleware;
 
 public class GatewayLoggingMiddleware
 {
@@ -16,28 +18,29 @@ public class GatewayLoggingMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        var correlationId = context.Request.Headers[CorrelationIdHeader]
-            .FirstOrDefault() ?? "unknown";
+        var correlationId = context.Request.Headers["X-Correlation-ID"]
+        .FirstOrDefault() ?? "unknown";
 
         var start = DateTime.UtcNow;
 
-        _logger.LogInformation(
-            "[{CorrelationId}] → {Method} {Path}{Query}",
-            correlationId,
-            context.Request.Method,
-            context.Request.Path,
-            context.Request.QueryString);
+        using (LogContext.PushProperty("CorrelationId", correlationId))
+        {
+            _logger.LogInformation(
+                "→ {Method} {Path}{Query}",
+                context.Request.Method,
+                context.Request.Path,
+                context.Request.QueryString);
 
-        await _next(context);
+            await _next(context);
 
-        var elapsed = (DateTime.UtcNow - start).TotalMilliseconds;
+            var elapsed = (DateTime.UtcNow - start).TotalMilliseconds;
 
-        _logger.LogInformation(
-            "[{CorrelationId}] ← {StatusCode} {Method} {Path} in {Elapsed}ms",
-            correlationId,
-            context.Response.StatusCode,
-            context.Request.Method,
-            context.Request.Path,
-            Math.Round(elapsed));
+            _logger.LogInformation(
+                "← {StatusCode} {Method} {Path} in {Elapsed}ms",
+                context.Response.StatusCode,
+                context.Request.Method,
+                context.Request.Path,
+                Math.Round(elapsed));
+        }
     }
 }

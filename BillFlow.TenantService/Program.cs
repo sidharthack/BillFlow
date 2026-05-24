@@ -1,25 +1,84 @@
+using BillFlow.Contracts.Health;
+using BillFlow.Contracts.Logging;
 using BillFlow.TenantService.Data;
 using BillFlow.TenantService.Services;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+const string ServiceName = "TenantService";
+// Use: "TenantService", "", "CustomerService",
+//      "NotificationService" in respective services
 
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
+SerilogBootstrap.Configure(ServiceName);
+try
+{
 
-builder.Services.AddDbContext<TenantDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection"),
-        sql => sql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null)
-    )
-);
+    var builder = WebApplication.CreateBuilder(args);
+    SerilogBootstrap.ConfigureBuilder(builder, ServiceName);
 
-builder.Services.AddScoped<ITenantService, TenantService>();
+    builder.Services.AddControllers();
+    builder.Services.AddEndpointsApiExplorer();
 
-var app = builder.Build();
+    builder.Services.AddDbContext<TenantDbContext>(options =>
+        options.UseSqlServer(
+            builder.Configuration.GetConnectionString("DefaultConnection"),
+            sql => sql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null)
+        )
+    );
+    // ── Health checks ─────────────────────────────────────────────────────────
+    builder.Services.AddHealthChecks()
+        // Liveness — is the process alive?
+        .AddCheck("self", () => HealthCheckResult.Healthy("Service is running"),
+            tags: ["live"])
 
-app.UseHttpsRedirection();
-app.UseAuthorization();
-app.MapControllers();
+        // Readiness — can it serve traffic? (DB must be reachable)
+        .AddDbContextCheck<TenantDbContext>(          // change per service:
+            name: "database",                      // AppDbContext, TenantDbContext,
+            tags: ["ready"],                       // IdentityDbContext, etc.
+            customTestQuery: async (db, ct) =>
+            {
+                // Actually query the DB — not just check connection
+                await db.Database.ExecuteSqlRawAsync("SELECT 1", ct);
+                return true;
+            });
 
-app.Run();
+    builder.Services.AddScoped<ITenantService, TenantService>();
+
+    var app = builder.Build();
+
+    app.UseHttpsRedirection();
+    app.UseMiddleware<ServiceCorrelationMiddleware>();
+
+    app.UseAuthorization();
+    app.MapControllers();
+    app.MapHealthChecks("/health/live", new HealthCheckOptions
+    {
+        ResponseWriter = HealthCheckResponseWriter.Options.ResponseWriter,
+        AllowCachingResponses = HealthCheckResponseWriter.Options.AllowCachingResponses,
+        Predicate = check => check.Tags.Contains("live")
+    });
+
+    // Readiness — load balancer stops routing traffic if this fails
+    app.MapHealthChecks("/health/ready", new HealthCheckOptions
+    {
+        ResponseWriter = HealthCheckResponseWriter.Options.ResponseWriter,
+        AllowCachingResponses = HealthCheckResponseWriter.Options.AllowCachingResponses,
+        Predicate = check => check.Tags.Contains("ready")
+    });
+
+
+    // Combined — what the gateway currently calls
+    app.MapHealthChecks("/health",
+        HealthCheckResponseWriter.Options);
+    app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "{ServiceName} terminated unexpectedly", ServiceName);
+}
+finally
+{
+    Log.CloseAndFlush();
+}
