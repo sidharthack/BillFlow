@@ -1,5 +1,6 @@
 using BillFlow.Contracts.Health;
 using BillFlow.Contracts.Logging;
+using BillFlow.Contracts.Metrics;
 using BillFlow.TenantService.Data;
 using BillFlow.TenantService.Services;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -12,11 +13,13 @@ const string ServiceName = "TenantService";
 //      "NotificationService" in respective services
 
 SerilogBootstrap.Configure(ServiceName);
+
 try
 {
-
     var builder = WebApplication.CreateBuilder(args);
+
     SerilogBootstrap.ConfigureBuilder(builder, ServiceName);
+    builder.Services.AddBillFlowMetrics(ServiceName);
 
     builder.Services.AddControllers();
     builder.Services.AddEndpointsApiExplorer();
@@ -27,6 +30,7 @@ try
             sql => sql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null)
         )
     );
+
     // ── Health checks ─────────────────────────────────────────────────────────
     builder.Services.AddHealthChecks()
         // Liveness — is the process alive?
@@ -34,9 +38,9 @@ try
             tags: ["live"])
 
         // Readiness — can it serve traffic? (DB must be reachable)
-        .AddDbContextCheck<TenantDbContext>(          // change per service:
-            name: "database",                      // AppDbContext, TenantDbContext,
-            tags: ["ready"],                       // IdentityDbContext, etc.
+        .AddDbContextCheck<TenantDbContext>(
+            name: "database",
+            tags: ["ready"],
             customTestQuery: async (db, ct) =>
             {
                 // Actually query the DB — not just check connection
@@ -49,10 +53,14 @@ try
     var app = builder.Build();
 
     app.UseHttpsRedirection();
+    app.UseBillFlowMetrics();
+
     app.UseMiddleware<ServiceCorrelationMiddleware>();
 
     app.UseAuthorization();
+
     app.MapControllers();
+
     app.MapHealthChecks("/health/live", new HealthCheckOptions
     {
         ResponseWriter = HealthCheckResponseWriter.Options.ResponseWriter,
@@ -68,10 +76,10 @@ try
         Predicate = check => check.Tags.Contains("ready")
     });
 
-
     // Combined — what the gateway currently calls
     app.MapHealthChecks("/health",
         HealthCheckResponseWriter.Options);
+
     app.Run();
 }
 catch (Exception ex)

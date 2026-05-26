@@ -1,0 +1,200 @@
+{
+  "title": "BillFlow Business Metrics",
+  "uid": "billflow-business",
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Invoice Creation Rate (per minute)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 8 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (currency) (rate(billflow_invoices_created_total[5m])) * 60",
+          "legendFormat": "{{currency}} invoices/min"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Revenue Rate (per minute)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyINR",
+          "custom": { "lineWidth": 2, "fillOpacity": 8 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (currency) (rate(billflow_invoice_value_total[5m])) * 60",
+          "legendFormat": "{{currency}} value/min"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Invoice Status Transitions Breakdown",
+      "type": "piechart",
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 8 },
+      "options": {
+        "pieType": "donut",
+        "legend": { "displayMode": "list", "placement": "right" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (to_status) (billflow_invoice_transitions_total)",
+          "legendFormat": "→ {{to_status}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Email Delivery Breakdown",
+      "type": "piechart",
+      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 8 },
+      "options": {
+        "pieType": "donut",
+        "legend": { "displayMode": "list", "placement": "right" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (event_type) (billflow_emails_sent_total{status=\"sent\"})",
+          "legendFormat": "{{event_type}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Authentication — Success vs Failure",
+      "type": "timeseries",
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "rate(billflow_login_attempts_total{outcome=\"success\"}[5m]) * 60",
+          "legendFormat": "Success/min"
+        },
+        {
+          "expr": "rate(billflow_login_attempts_total{outcome=\"failure\"}[5m]) * 60",
+          "legendFormat": "Failure/min"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "RabbitMQ Event Processing",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 8 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (routing_key, outcome) (rate(billflow_events_consumed_total[5m]))",
+          "legendFormat": "{{routing_key}} — {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Gateway Proxied Requests by Cluster",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 8 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (cluster) (rate(billflow_gateway_requests_proxied_total[2m]))",
+          "legendFormat": "{{cluster}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Overdue Invoice Job History",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(billflow_overdue_job_seconds_bucket[10m]))",
+          "legendFormat": "p95 job duration"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Cumulative Invoices Marked Overdue",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 24, "w": 6, "h": 6 },
+      "options": { "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5  },
+              { "color": "red",    "value": 20 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(billflow_invoices_overdue_total) or vector(0)",
+          "legendFormat": "Overdue total"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Tokens Issued",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 24, "w": 6, "h": 6 },
+      "options": { "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [{ "color": "purple", "value": null }]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(billflow_tokens_issued_total) or vector(0)",
+          "legendFormat": "Tokens"
+        }
+      ]
+    }
+  ]
+}

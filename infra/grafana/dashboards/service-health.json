@@ -1,0 +1,158 @@
+{
+  "title": "BillFlow Service Health",
+  "uid": "billflow-health",
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "15s",
+  "time": { "from": "now-30m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "label": "Service",
+        "query": "label_values(http_requests_received_total, job)",
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request Rate — $service",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 8 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (job) (rate(http_requests_received_total{job=~\"$service\"}[2m]))",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Response Time p50/p95/p99 — $service",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (job, le) (rate(http_request_duration_seconds_bucket{job=~\"$service\"}[2m])))",
+          "legendFormat": "p99 — {{job}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (job, le) (rate(http_request_duration_seconds_bucket{job=~\"$service\"}[2m])))",
+          "legendFormat": "p95 — {{job}}"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum by (job, le) (rate(http_request_duration_seconds_bucket{job=~\"$service\"}[2m])))",
+          "legendFormat": "p50 — {{job}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Error Rate (5xx) — $service",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 12 },
+          "color": { "fixedColor": "red", "mode": "fixed" }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (job) (rate(http_requests_received_total{code=~\"5..\", job=~\"$service\"}[2m]))",
+          "legendFormat": "5xx — {{job}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Requests In Progress — $service",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 8 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (job) (http_requests_in_progress{job=~\"$service\"})",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": ".NET GC Collections — $service",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 1.5 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (job, gc_generation) (rate(dotnet_collection_count_total{job=~\"$service\"}[2m]))",
+          "legendFormat": "{{job}} gen{{gc_generation}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": ".NET Heap Size — $service",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 16, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "lineWidth": 1.5, "fillOpacity": 8 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (job) (dotnet_total_memory_bytes{job=~\"$service\"})",
+          "legendFormat": "{{job}} heap"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Thread Pool — $service",
+      "type": "timeseries",
+      "gridPos": { "x": 16, "y": 16, "w": 8, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 1.5 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (job) (dotnet_threadpool_num_threads{job=~\"$service\"})",
+          "legendFormat": "{{job}} threads"
+        }
+      ]
+    }
+  ]
+}

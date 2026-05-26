@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/infra/">
     <File Path="docker-compose.infra.yml" />
+    <File Path="prometheus.yml" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="BillFlow.CustomerService/BillFlow.CustomerService.csproj" Id="517552c3-083f-42d4-9d0d-bf1e8f6b1c98" />

@@ -1,7 +1,9 @@
-﻿using BillFlow.Contracts.Tenancy;
+﻿using BillFlow.Contracts.Metrics;
+using BillFlow.Contracts.Tenancy;
 using BillFlow.InvoiceService.Data;
 using BillFlow.InvoiceService.Documents;
 using Microsoft.EntityFrameworkCore;
+using Prometheus;
 using QuestPDF.Fluent;
 
 namespace BillFlow.InvoiceService.Services;
@@ -73,13 +75,16 @@ public class PdfService : IPdfService
 
         // Generate PDF bytes
         var document = new InvoicePdfDocument(invoiceDto, branding);
-        var pdfBytes = document.GeneratePdf();
+        using (BillFlowMetrics.PdfGenerationDuration.NewTimer())
+        {
+            var pdfBytes = document.GeneratePdf();
 
-        _logger.LogInformation(
-            "Generated PDF for invoice {Number} ({Bytes} bytes)",
-            invoice.InvoiceNumber, pdfBytes.Length);
+            _logger.LogInformation(
+                "Generated PDF for invoice {Number} ({Bytes} bytes)",
+                invoice.InvoiceNumber, pdfBytes.Length);
 
-        return pdfBytes;
+            return pdfBytes;
+        }
     }
 
     private async Task<TenantBranding> GetTenantBrandingAsync()

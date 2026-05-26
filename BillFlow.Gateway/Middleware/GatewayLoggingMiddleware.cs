@@ -1,4 +1,5 @@
-﻿using Serilog.Context;
+﻿using BillFlow.Contracts.Metrics;
+using Serilog.Context;
 
 namespace BillFlow.Gateway.Middleware;
 
@@ -32,7 +33,13 @@ public class GatewayLoggingMiddleware
                 context.Request.QueryString);
 
             await _next(context);
+            var cluster = context.GetReverseProxyFeature()
+    ?.ProxiedDestination?.Model?.Config?.Address
+    ?? "unknown";
 
+            BillFlowMetrics.GatewayRequestsProxied
+                .WithLabels(cluster, context.Response.StatusCode.ToString())
+                .Inc();
             var elapsed = (DateTime.UtcNow - start).TotalMilliseconds;
 
             _logger.LogInformation(

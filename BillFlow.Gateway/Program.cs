@@ -1,10 +1,13 @@
 using BillFlow.Contracts.Logging;
+using BillFlow.Contracts.Metrics;
 using BillFlow.Gateway.Endpoints;
 using BillFlow.Gateway.Middleware;
 using BillFlow.Gateway.Transforms;
 using Serilog;
 using System.Threading.RateLimiting;
+
 const string ServiceName = "Gateway";
+
 SerilogBootstrap.Configure(ServiceName);
 
 try
@@ -12,12 +15,13 @@ try
     var builder = WebApplication.CreateBuilder(args);
 
     SerilogBootstrap.ConfigureBuilder(builder, ServiceName);
+    builder.Services.AddBillFlowMetrics(ServiceName);
 
     // ── YARP with programmatic transforms ────────────────────────────────────
     builder.Services
-    .AddReverseProxy()
-    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
-    .AddTransforms<GatewayTransformProvider>();  // ← register transform provider
+        .AddReverseProxy()
+        .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
+        .AddTransforms<GatewayTransformProvider>();  // ← register transform provider
 
     // ── Rate limiting ─────────────────────────────────────────────────────────
     var rateLimitConfig = builder.Configuration.GetSection("RateLimiting");
@@ -31,6 +35,7 @@ try
         options.AddPolicy("standard", context =>
         {
             var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
             return RateLimitPartition.GetFixedWindowLimiter(
                 partitionKey: $"standard_{clientIp}",
                 factory: _ => new FixedWindowRateLimiterOptions
@@ -46,6 +51,7 @@ try
         options.AddPolicy("auth", context =>
         {
             var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
             return RateLimitPartition.GetFixedWindowLimiter(
                 partitionKey: $"auth_{clientIp}",
                 factory: _ => new FixedWindowRateLimiterOptions
@@ -61,6 +67,7 @@ try
         options.AddPolicy("pdf", context =>
         {
             var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
             return RateLimitPartition.GetFixedWindowLimiter(
                 partitionKey: $"pdf_{clientIp}",
                 factory: _ => new FixedWindowRateLimiterOptions
@@ -74,6 +81,10 @@ try
 
         options.OnRejected = async (context, cancellationToken) =>
         {
+            BillFlowMetrics.RateLimitRejections
+                .WithLabels(context.HttpContext.Request.Path)
+                .Inc();
+
             context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
             context.HttpContext.Response.Headers["Retry-After"] = windowSeconds.ToString();
             await context.HttpContext.Response.WriteAsJsonAsync(new
@@ -111,12 +122,15 @@ try
 
     // ── Middleware pipeline (order matters) ───────────────────────────────────
 
+    app.UseHttpsRedirection();
+    app.UseBillFlowMetrics();
+
     app.UseMiddleware<CorrelationIdMiddleware>();       // 1. Correlation ID first
     app.UseMiddleware<SecurityHeadersMiddleware>();     // 2. Security headers
     app.UseMiddleware<GatewayLoggingMiddleware>();      // 3. Log with correlation ID
     app.UseMiddleware<RequestSizeLimitMiddleware>();    // 4. Reject oversized payloads
-    app.UseCors("BillFlowPolicy");                     // 5. CORS
-    app.UseRateLimiter();                              // 6. Rate limiting
+    app.UseCors("BillFlowPolicy");                      // 5. CORS
+    app.UseRateLimiter();                               // 6. Rate limiting
 
     // 7. Health endpoints (handled by gateway — not proxied)
     app.MapHealthEndpoints();
