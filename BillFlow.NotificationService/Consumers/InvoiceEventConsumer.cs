@@ -46,25 +46,39 @@ public class InvoiceEventConsumer : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Connect with retry — RabbitMQ might not be ready on startup
         await ConnectWithRetryAsync(stoppingToken);
 
         if (_channel is null) return;
 
-        // Declare the queue and bind to all invoice routing keys
+        // ── Declare exchange first ────────────────────────────────────────────
+        // Safe to declare even if it already exists — RabbitMQ is idempotent.
+        // This means NotificationService no longer depends on InvoiceService
+        // having started first.
+        await _channel.ExchangeDeclareAsync(
+            exchange: ExchangeName,
+            type: ExchangeType.Topic,
+            durable: true,
+            autoDelete: false);
+
+        // ── Declare queue ─────────────────────────────────────────────────────
         await _channel.QueueDeclareAsync(
             queue: QueueName,
-            durable: true,          // survives RabbitMQ restart
-            exclusive: false,       // shared across multiple consumer instances
+            durable: true,
+            exclusive: false,
             autoDelete: false,
             arguments: new Dictionary<string, object?>
             {
-                // Dead letter queue — failed messages go here
                 ["x-dead-letter-exchange"] = "billflow.dead-letters",
-                ["x-message-ttl"] = 86400000   // 24 hours TTL
+                ["x-message-ttl"] = 86400000
             });
 
-        // Bind to each routing key
+        // ── Declare dead letter exchange ──────────────────────────────────────
+        await _channel.ExchangeDeclareAsync(
+            exchange: "billflow.dead-letters",
+            type: ExchangeType.Topic,
+            durable: true);
+
+        // ── Bind routing keys ─────────────────────────────────────────────────
         foreach (var key in RoutingKeys)
         {
             await _channel.QueueBindAsync(
@@ -73,35 +87,23 @@ public class InvoiceEventConsumer : BackgroundService
                 routingKey: key);
         }
 
-        // Declare dead letter exchange for failed messages
-        await _channel.ExchangeDeclareAsync(
-            exchange: "billflow.dead-letters",
-            type: ExchangeType.Topic,
-            durable: true);
-
         _logger.LogInformation(
-            "NotificationService subscribed to queue '{Queue}' " +
-            "with keys: {Keys}",
+            "NotificationService subscribed to queue '{Queue}' with keys: {Keys}",
             QueueName, string.Join(", ", RoutingKeys));
 
-        // Set prefetch — process one message at a time
-        // Prevents memory overload if thousands of events arrive at once
         await _channel.BasicQosAsync(
             prefetchSize: 0,
             prefetchCount: 1,
             global: false);
 
-        // Create async consumer
         var consumer = new AsyncEventingBasicConsumer(_channel);
         consumer.ReceivedAsync += OnMessageReceivedAsync;
 
-        // Start consuming — autoAck: false means we manually acknowledge
         await _channel.BasicConsumeAsync(
             queue: QueueName,
             autoAck: false,
             consumer: consumer);
 
-        // Keep running until app shuts down
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
