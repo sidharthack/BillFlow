@@ -1,4 +1,5 @@
-﻿using BillFlow.Contracts.Tenancy;
+﻿using BillFlow.Contracts.Metrics;
+using BillFlow.Contracts.Tenancy;
 using BillFlow.InvoiceService.Data;
 using BillFlow.InvoiceService.DTOs;
 using BillFlow.InvoiceService.Messaging;
@@ -116,6 +117,12 @@ public class InvoiceService : IInvoiceService
 
         _db.Invoices.Add(invoice);
         await _db.SaveChangesAsync();
+        BillFlowMetrics.InvoicesCreated
+    .WithLabels(_tenant.TenantId.ToString(), invoice.Currency)
+    .Inc();
+        BillFlowMetrics.InvoiceValueTotal
+    .WithLabels(invoice.Currency)
+    .Inc((double)invoice.TotalAmount);
         // Publish InvoiceCreated event
         await _publisher.PublishAsync(
             new BillFlow.Contracts.Events.InvoiceCreatedEvent(
@@ -158,6 +165,9 @@ public class InvoiceService : IInvoiceService
         InvoiceStatusMachine.Transition(invoice, toStatus, request.Note);
 
         await _db.SaveChangesAsync();
+        BillFlowMetrics.InvoiceTransitions
+    .WithLabels(invoice.Status.ToString(), toStatus.ToString())
+    .Inc();
         // Publish event based on new status
         if (toStatus == InvoiceStatus.Sent)
         {

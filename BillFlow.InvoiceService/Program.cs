@@ -1,5 +1,6 @@
 using BillFlow.Contracts.Health;
 using BillFlow.Contracts.Logging;
+using BillFlow.Contracts.Metrics;
 using BillFlow.Contracts.Tenancy;
 using BillFlow.InvoiceService.Data;
 using BillFlow.InvoiceService.Jobs;
@@ -18,6 +19,7 @@ using Polly;
 using QuestPDF.Infrastructure;
 using Serilog;
 using System.Text;
+
 const string ServiceName = "InvoiceService";
 
 // Add as the very first line before WebApplication.CreateBuilder
@@ -27,10 +29,13 @@ QuestPDF.Settings.License = LicenseType.Community;
 //      "NotificationService" in respective services
 
 SerilogBootstrap.Configure(ServiceName);
+
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+
     SerilogBootstrap.ConfigureBuilder(builder, ServiceName);
+    builder.Services.AddBillFlowMetrics(ServiceName);
 
     builder.Services.AddControllers();
     builder.Services.AddEndpointsApiExplorer();
@@ -42,6 +47,7 @@ try
             sql => sql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null)
         )
     );
+
     // ── Health checks ─────────────────────────────────────────────────────────
     builder.Services.AddHealthChecks()
         // Liveness — is the process alive?
@@ -49,15 +55,16 @@ try
             tags: ["live"])
 
         // Readiness — can it serve traffic? (DB must be reachable)
-        .AddDbContextCheck<AppDbContext>(          // change per service:
-            name: "database",                      // AppDbContext, TenantDbContext,
-            tags: ["ready"],                       // IdentityDbContext, etc.
+        .AddDbContextCheck<AppDbContext>(
+            name: "database",
+            tags: ["ready"],
             customTestQuery: async (db, ct) =>
             {
                 // Actually query the DB — not just check connection
                 await db.Database.ExecuteSqlRawAsync("SELECT 1", ct);
                 return true;
             });
+
     // JWT settings — registered as singleton so middleware can resolve it
     var jwtSettings = builder.Configuration
         .GetSection("JwtSettings")
@@ -109,6 +116,7 @@ try
         client.BaseAddress = new Uri(
             builder.Configuration["ServiceUrls:TenantService"]
             ?? "https://localhost:5001");
+
         client.Timeout = TimeSpan.FromSeconds(10);
     })
     .AddResilienceHandler("tenant-pipeline", pipeline =>
@@ -120,10 +128,9 @@ try
             MaxRetryAttempts = 3,
             BackoffType = DelayBackoffType.Exponential,
             Delay = TimeSpan.FromMilliseconds(500),
-            UseJitter = true,   // adds random jitter to prevent thundering herd
+            UseJitter = true,
             ShouldHandle = args => args.Outcome switch
             {
-                // Retry on network failures and 5xx responses
                 { Exception: HttpRequestException } => PredicateResult.True(),
                 { Result.StatusCode: >= System.Net.HttpStatusCode.InternalServerError }
                     => PredicateResult.True(),
@@ -131,14 +138,13 @@ try
             }
         });
 
-        // Circuit breaker: open after 5 failures in 30 seconds
-        // Stays open for 15 seconds, then half-opens to test recovery
+        // Circuit breaker
         pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
         {
-            FailureRatio = 0.5,                          // 50% failure rate triggers open
-            SamplingDuration = TimeSpan.FromSeconds(30), // measured over 30s window
-            MinimumThroughput = 5,                       // need at least 5 calls to evaluate
-            BreakDuration = TimeSpan.FromSeconds(15),    // stay open for 15 seconds
+            FailureRatio = 0.5,
+            SamplingDuration = TimeSpan.FromSeconds(30),
+            MinimumThroughput = 5,
+            BreakDuration = TimeSpan.FromSeconds(15),
             ShouldHandle = args => args.Outcome switch
             {
                 { Exception: HttpRequestException } => PredicateResult.True(),
@@ -148,7 +154,7 @@ try
             }
         });
 
-        // Timeout: each individual attempt times out after 5 seconds
+        // Timeout
         pipeline.AddTimeout(TimeSpan.FromSeconds(5));
     });
 
@@ -158,6 +164,7 @@ try
         client.BaseAddress = new Uri(
             builder.Configuration["ServiceUrls:CustomerService"]
             ?? "https://localhost:5003");
+
         client.Timeout = TimeSpan.FromSeconds(10);
     })
     .AddResilienceHandler("customer-pipeline", pipeline =>
@@ -169,6 +176,7 @@ try
             Delay = TimeSpan.FromMilliseconds(500),
             UseJitter = true
         });
+
         pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
         {
             FailureRatio = 0.5,
@@ -176,11 +184,14 @@ try
             MinimumThroughput = 5,
             BreakDuration = TimeSpan.FromSeconds(15)
         });
+
         pipeline.AddTimeout(TimeSpan.FromSeconds(5));
     });
+
     // Add with business services
     builder.Services.AddScoped<IInvoiceNumberService, InvoiceNumberService>();
     builder.Services.AddScoped<ICustomerClient, CustomerClient>();
+
     // Business services
     builder.Services.AddScoped<IInvoiceService, InvoiceService>();
     builder.Services.AddScoped<IPdfService, PdfService>();
@@ -191,7 +202,6 @@ try
         var config = sp.GetRequiredService<IConfiguration>();
         var logger = sp.GetRequiredService<ILogger<RabbitMqEventPublisher>>();
 
-        // Block here is acceptable for Singleton startup initialization
         return RabbitMqEventPublisher.CreateAsync(config, logger)
             .GetAwaiter()
             .GetResult();
@@ -211,7 +221,7 @@ try
                 QueuePollInterval = TimeSpan.Zero,
                 UseRecommendedIsolationLevel = true,
                 DisableGlobalLocks = true,
-                SchemaName = "Hangfire"   // separate schema inside BillFlow_Invoices
+                SchemaName = "Hangfire"
             }
         )
     );
@@ -219,7 +229,7 @@ try
     // Hangfire server — processes background jobs
     builder.Services.AddHangfireServer(options =>
     {
-        options.WorkerCount = 2;    // 2 concurrent job workers
+        options.WorkerCount = 2;
         options.ServerName = "InvoiceService";
     });
 
@@ -228,21 +238,25 @@ try
 
     var app = builder.Build();
 
-
     app.UseHttpsRedirection();
+    app.UseBillFlowMetrics();
+
     app.UseMiddleware<ServiceCorrelationMiddleware>();
+
     // Order is critical:
     // 1. Logging (sees everything)
     // 2. Authentication (validates JWT signature)
     // 3. TenantMiddleware (reads claims, populates ITenantContext)
     // 4. Authorization (enforces [Authorize] attributes)
+
     app.UseMiddleware<RequestLoggingMiddleware>();
+
     // Hangfire dashboard — view job history at /hangfire
     // In production: add auth to this endpoint
     app.UseHangfireDashboard("/hangfire", new DashboardOptions
     {
-        IsReadOnlyFunc = _ => false,    // allow retrying jobs from UI
-        Authorization = []              // open for now — lock down in Week 8
+        IsReadOnlyFunc = _ => false,
+        Authorization = []
     });
 
     app.UseAuthentication();
@@ -253,13 +267,15 @@ try
     RecurringJob.AddOrUpdate<OverdueInvoiceJob>(
         recurringJobId: "overdue-invoice-detection",
         methodCall: job => job.ExecuteAsync(),
-        cronExpression: "0 1 * * *",    // daily at 01:00 UTC
+        cronExpression: "0 1 * * *",
         options: new RecurringJobOptions
         {
             TimeZone = TimeZoneInfo.Utc
         }
     );
+
     app.MapControllers();
+
     app.MapHealthChecks("/health/live", new HealthCheckOptions
     {
         ResponseWriter = HealthCheckResponseWriter.Options.ResponseWriter,
@@ -278,7 +294,7 @@ try
     // Combined — what the gateway currently calls
     app.MapHealthChecks("/health",
         HealthCheckResponseWriter.Options);
-    app.Run();
+
     app.Run();
 }
 catch (Exception ex)

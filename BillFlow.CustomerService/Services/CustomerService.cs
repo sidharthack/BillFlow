@@ -1,4 +1,5 @@
-﻿using BillFlow.Contracts.Tenancy;
+﻿using BillFlow.Contracts.Metrics;
+using BillFlow.Contracts.Tenancy;
 using BillFlow.CustomerService.Data;
 using BillFlow.CustomerService.DTOs;
 using BillFlow.CustomerService.Models;
@@ -98,7 +99,9 @@ public class CustomerService : ICustomerService
 
         _db.Customers.Add(customer);
         await _db.SaveChangesAsync();
-
+        BillFlowMetrics.CustomersCreated
+    .WithLabels(_tenant.TenantId.ToString())
+    .Inc();
         _logger.LogInformation(
             "Tenant [{TenantId}] created customer {Name} <{Email}>",
             _tenant.TenantId, customer.Name, customer.Email);

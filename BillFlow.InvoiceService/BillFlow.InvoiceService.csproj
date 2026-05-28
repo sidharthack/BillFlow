@@ -28,6 +28,8 @@
 		<PackageReference Include="Serilog.Sinks.Seq" Version="9.1.0" />
 		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.8" />
 		<PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.6.0" />
+		<PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
+		<PackageReference Include="prometheus-net.DotNetRuntime" Version="4.4.1" />
 	</ItemGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\BillFlow.Contracts\BillFlow.Contracts.csproj" />

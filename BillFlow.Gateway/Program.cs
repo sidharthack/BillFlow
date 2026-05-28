@@ -1,10 +1,14 @@
 using BillFlow.Contracts.Logging;
+using BillFlow.Contracts.Metrics;
 using BillFlow.Gateway.Endpoints;
 using BillFlow.Gateway.Middleware;
 using BillFlow.Gateway.Transforms;
 using Serilog;
 using System.Threading.RateLimiting;
+using Yarp.ReverseProxy.Model;
+
 const string ServiceName = "Gateway";
+
 SerilogBootstrap.Configure(ServiceName);
 
 try
@@ -12,12 +16,13 @@ try
     var builder = WebApplication.CreateBuilder(args);
 
     SerilogBootstrap.ConfigureBuilder(builder, ServiceName);
+    builder.Services.AddBillFlowMetrics(ServiceName);
 
-    // ── YARP with programmatic transforms ────────────────────────────────────
+    // ── YARP ─────────────────────────────────────────────────────────────────
     builder.Services
-    .AddReverseProxy()
-    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
-    .AddTransforms<GatewayTransformProvider>();  // ← register transform provider
+        .AddReverseProxy()
+        .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
+        .AddTransforms<GatewayTransformProvider>();
 
     // ── Rate limiting ─────────────────────────────────────────────────────────
     var rateLimitConfig = builder.Configuration.GetSection("RateLimiting");
@@ -27,7 +32,6 @@ try
 
     builder.Services.AddRateLimiter(options =>
     {
-        // Standard API policy
         options.AddPolicy("standard", context =>
         {
             var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -42,7 +46,6 @@ try
                 });
         });
 
-        // Auth policy — strict
         options.AddPolicy("auth", context =>
         {
             var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -57,7 +60,6 @@ try
                 });
         });
 
-        // PDF policy
         options.AddPolicy("pdf", context =>
         {
             var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -74,6 +76,10 @@ try
 
         options.OnRejected = async (context, cancellationToken) =>
         {
+            BillFlowMetrics.RateLimitRejections
+                .WithLabels(context.HttpContext.Request.Path)
+                .Inc();
+
             context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
             context.HttpContext.Response.Headers["Retry-After"] = windowSeconds.ToString();
             await context.HttpContext.Response.WriteAsJsonAsync(new
@@ -86,21 +92,29 @@ try
     });
 
     // ── HttpClient for health checks ──────────────────────────────────────────
+    // ← ConfigurePrimaryHttpMessageHandler accepts self-signed dev certs
     builder.Services.AddHttpClient("HealthCheck", client =>
     {
-        client.Timeout = TimeSpan.FromSeconds(3);
+        client.Timeout = TimeSpan.FromSeconds(5);
+    })
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+    {
+        ServerCertificateCustomValidationCallback =
+            HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
     });
 
     // ── CORS ──────────────────────────────────────────────────────────────────
+    var allowedOrigins = builder.Configuration
+        .GetSection("AllowedOrigins")
+        .Get<string[]>()
+        ?? ["http://localhost:3000", "http://localhost:4200"];
+
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("BillFlowPolicy", policy =>
         {
             policy
-                .WithOrigins(
-                    "http://localhost:3000",
-                    "http://localhost:4200",
-                    "https://app.billflow.io")
+                .WithOrigins(allowedOrigins)
                 .AllowAnyMethod()
                 .AllowAnyHeader()
                 .AllowCredentials();
@@ -109,22 +123,36 @@ try
 
     var app = builder.Build();
 
-    // ── Middleware pipeline (order matters) ───────────────────────────────────
+    // ── Middleware pipeline ───────────────────────────────────────────────────
+    app.UseHttpsRedirection();
+    app.UseBillFlowMetrics();
 
-    app.UseMiddleware<CorrelationIdMiddleware>();       // 1. Correlation ID first
-    app.UseMiddleware<SecurityHeadersMiddleware>();     // 2. Security headers
-    app.UseMiddleware<GatewayLoggingMiddleware>();      // 3. Log with correlation ID
-    app.UseMiddleware<RequestSizeLimitMiddleware>();    // 4. Reject oversized payloads
-    app.UseCors("BillFlowPolicy");                     // 5. CORS
-    app.UseRateLimiter();                              // 6. Rate limiting
+    app.UseMiddleware<CorrelationIdMiddleware>();
+    app.UseMiddleware<SecurityHeadersMiddleware>();
+    app.UseMiddleware<GatewayLoggingMiddleware>();
+    app.UseMiddleware<RequestSizeLimitMiddleware>();
+    app.UseCors("BillFlowPolicy");
+    app.UseRateLimiter();
 
-    // 7. Health endpoints (handled by gateway — not proxied)
     app.MapHealthEndpoints();
 
-    // 8. YARP proxy — handles all /api/* routes
+    // ← Metrics tracked INSIDE YARP pipeline where IReverseProxyFeature exists
     app.MapReverseProxy(pipeline =>
     {
-        // Add rate limit policy filter inside YARP pipeline
+        pipeline.Use(async (context, next) =>
+        {
+            await next();
+
+            // ClusterId is on the route model, not the destination
+            var proxyFeature = context.GetReverseProxyFeature();
+            var cluster = proxyFeature?.Route?.Config?.ClusterId
+                ?? "unknown";
+
+            BillFlowMetrics.GatewayRequestsProxied
+                .WithLabels(cluster, context.Response.StatusCode.ToString())
+                .Inc();
+        });
+
         pipeline.UseMiddleware<RateLimitPolicyFilter>();
     });
 

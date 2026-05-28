@@ -1,5 +1,3 @@
-version: '3.9'
-
 networks:
   billflow-network:
     external: true
@@ -24,13 +22,14 @@ services:
     container_name: billflow-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: billflow
-      RABBITMQ_DEFAULT_PASS: billflow123
+      RABBITMQ_DEFAULT_PASS: "billflow123"
     ports:
       - "5672:5672"
       - "15672:15672"
     restart: unless-stopped
     networks:
       - billflow-network
+
   seq:
     image: datalust/seq:latest
     container_name: billflow-seq
@@ -45,7 +44,37 @@ services:
     networks:
       - billflow-network
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: billflow-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=7d'
+    restart: unless-stopped
+    networks:
+      - billflow-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: billflow-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "BillFlow@1234"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+    networks:
+      - billflow-network
+
 volumes:
   sqlserver-data:
-  billflow-seq-data:    # ← add this under the volumes section
-  
+  billflow-seq-data:
+  prometheus-data:
+  grafana-data:

@@ -1,4 +1,5 @@
-﻿using Serilog.Context;
+﻿using BillFlow.Contracts.Metrics;
+using Serilog.Context;
 
 namespace BillFlow.Gateway.Middleware;
 

@@ -1,9 +1,10 @@
-﻿using System.Text;
-using System.Text.Json;
-using BillFlow.Contracts.Events;
+﻿using BillFlow.Contracts.Events;
+using BillFlow.Contracts.Metrics;
 using BillFlow.NotificationService.Services;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using System.Text;
+using System.Text.Json;
 
 namespace BillFlow.NotificationService.Consumers;
 
@@ -124,7 +125,9 @@ public class InvoiceEventConsumer : BackgroundService
                 .GetRequiredService<INotificationService>();
 
             await DispatchAsync(notificationService, routingKey, body);
-
+            BillFlowMetrics.EventsConsumed
+    .WithLabels(routingKey, "success")
+    .Inc();
             // Acknowledge — remove message from queue
             await _channel!.BasicAckAsync(ea.DeliveryTag, multiple: false);
 
@@ -134,6 +137,9 @@ public class InvoiceEventConsumer : BackgroundService
         }
         catch (Exception ex)
         {
+            BillFlowMetrics.EventsConsumed
+    .WithLabels(routingKey, "failure")
+    .Inc();
             _logger.LogError(ex,
                 "Failed to process event '{RoutingKey}' [msgId: {MessageId}]",
                 routingKey, messageId);

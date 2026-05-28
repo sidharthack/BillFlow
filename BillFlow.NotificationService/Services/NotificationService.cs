@@ -1,8 +1,9 @@
-﻿using System.Text.Json;
-using BillFlow.Contracts.Events;
+﻿using BillFlow.Contracts.Events;
+using BillFlow.Contracts.Metrics;
 using BillFlow.NotificationService.Data;
 using BillFlow.NotificationService.Models;
 using BillFlow.NotificationService.Templates;
+using System.Text.Json;
 
 namespace BillFlow.NotificationService.Services;
 
@@ -150,7 +151,12 @@ public class NotificationService : INotificationService
             : NotificationStatus.Failed;
 
         if (success)
+        {
+            BillFlowMetrics.EmailsSent
+    .WithLabels(eventType, success ? "sent" : "failed")
+    .Inc();
             log.SentAt = DateTime.UtcNow;
+        }
         else
             log.ErrorMessage = "Email send failed — check SendGrid logs";
 

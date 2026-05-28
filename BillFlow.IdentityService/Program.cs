@@ -1,5 +1,6 @@
 using BillFlow.Contracts.Health;
 using BillFlow.Contracts.Logging;
+using BillFlow.Contracts.Metrics;
 using BillFlow.Contracts.Tenancy;
 using BillFlow.IdentityService.Data;
 using BillFlow.IdentityService.Services;
@@ -15,11 +16,13 @@ const string ServiceName = "IdentityService";
 //      "NotificationService" in respective services
 
 SerilogBootstrap.Configure(ServiceName);
+
 try
 {
     var builder = WebApplication.CreateBuilder(args);
-    SerilogBootstrap.ConfigureBuilder(builder, ServiceName);
 
+    SerilogBootstrap.ConfigureBuilder(builder, ServiceName);
+    builder.Services.AddBillFlowMetrics(ServiceName);
 
     builder.Services.AddControllers();
     builder.Services.AddEndpointsApiExplorer();
@@ -31,6 +34,7 @@ try
             sql => sql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null)
         )
     );
+
     // ── Health checks ─────────────────────────────────────────────────────────
     builder.Services.AddHealthChecks()
         // Liveness — is the process alive?
@@ -38,15 +42,16 @@ try
             tags: ["live"])
 
         // Readiness — can it serve traffic? (DB must be reachable)
-        .AddDbContextCheck<IdentityDbContext>(          // change per service:
-            name: "database",                      // AppDbContext, TenantDbContext,
-            tags: ["ready"],                       // IdentityDbContext, etc.
+        .AddDbContextCheck<IdentityDbContext>(
+            name: "database",
+            tags: ["ready"],
             customTestQuery: async (db, ct) =>
             {
                 // Actually query the DB — not just check connection
                 await db.Database.ExecuteSqlRawAsync("SELECT 1", ct);
                 return true;
             });
+
     // JWT settings — binds appsettings.json JwtSettings section
     builder.Services.Configure<JwtSettings>(
         builder.Configuration.GetSection("JwtSettings"));
@@ -56,26 +61,29 @@ try
     {
         client.BaseAddress = new Uri(
             builder.Configuration["ServiceUrls:TenantService"] ?? "https://localhost:5001");
+
         client.Timeout = TimeSpan.FromSeconds(10);
     })
-     .AddResilienceHandler("tenant-pipeline", pipeline =>
+    .AddResilienceHandler("tenant-pipeline", pipeline =>
+    {
+        pipeline.AddRetry(new HttpRetryStrategyOptions
         {
-            pipeline.AddRetry(new HttpRetryStrategyOptions
-            {
-                MaxRetryAttempts = 3,
-                BackoffType = DelayBackoffType.Exponential,
-                Delay = TimeSpan.FromMilliseconds(500),
-                UseJitter = true
-            });
-            pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
-            {
-                FailureRatio = 0.5,
-                SamplingDuration = TimeSpan.FromSeconds(30),
-                MinimumThroughput = 5,
-                BreakDuration = TimeSpan.FromSeconds(15)
-            });
-            pipeline.AddTimeout(TimeSpan.FromSeconds(5));
+            MaxRetryAttempts = 3,
+            BackoffType = DelayBackoffType.Exponential,
+            Delay = TimeSpan.FromMilliseconds(500),
+            UseJitter = true
         });
+
+        pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+        {
+            FailureRatio = 0.5,
+            SamplingDuration = TimeSpan.FromSeconds(30),
+            MinimumThroughput = 5,
+            BreakDuration = TimeSpan.FromSeconds(15)
+        });
+
+        pipeline.AddTimeout(TimeSpan.FromSeconds(5));
+    });
 
     // Services
     builder.Services.AddScoped<ITokenService, TokenService>();
@@ -83,12 +91,15 @@ try
 
     var app = builder.Build();
 
-
     app.UseHttpsRedirection();
+    app.UseBillFlowMetrics();
+
     app.UseMiddleware<ServiceCorrelationMiddleware>();
 
     app.UseAuthorization();
+
     app.MapControllers();
+
     // Liveness — Kubernetes restarts the pod if this fails
     app.MapHealthChecks("/health/live", new HealthCheckOptions
     {
@@ -108,7 +119,7 @@ try
     // Combined — what the gateway currently calls
     app.MapHealthChecks("/health",
         HealthCheckResponseWriter.Options);
-    app.Run();
+
     app.Run();
 }
 catch (Exception ex)

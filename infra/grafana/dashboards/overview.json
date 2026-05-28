@@ -1,0 +1,295 @@
+{
+  "title": "BillFlow Overview",
+  "uid": "billflow-overview",
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total Invoices Created",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(billflow_invoices_created_total)",
+          "legendFormat": "Total invoices"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Total Invoice Value (INR)",
+      "type": "stat",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyINR",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(billflow_invoice_value_total)",
+          "legendFormat": "Total value"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Emails Sent",
+      "type": "stat",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "options": { "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "purple", "value": null }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(billflow_emails_sent_total{status=\"sent\"})",
+          "legendFormat": "Emails sent"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Login Success Rate",
+      "type": "gauge",
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "minVel": 0,
+        "maxVal": 100
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "red",    "value": null },
+              { "color": "yellow", "value": 80   },
+              { "color": "green",  "value": 95   }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "100 * sum(billflow_login_attempts_total{outcome=\"success\"}) / sum(billflow_login_attempts_total)",
+          "legendFormat": "Success rate"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Customers Created",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
+      "options": { "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [{ "color": "blue", "value": null }]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(billflow_customers_created_total)",
+          "legendFormat": "Customers"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Invoices Marked Overdue",
+      "type": "stat",
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
+      "options": { "colorMode": "background" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red",   "value": 1    }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(billflow_invoices_overdue_total) or vector(0)",
+          "legendFormat": "Overdue"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "HTTP Request Rate — All Services",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 8 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (job) (rate(http_requests_received_total[2m]))",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "HTTP Error Rate — All Services",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 12
+          },
+          "color": { "fixedColor": "red", "mode": "fixed" }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (job) (rate(http_requests_received_total{code=~\"5..\"}[2m]))",
+          "legendFormat": "{{job}} 5xx"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Invoice Transitions Over Time",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 8 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (to_status) (rate(billflow_invoice_transitions_total[5m]))",
+          "legendFormat": "→ {{to_status}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Notification Events Over Time",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 8 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (event_type) (rate(billflow_emails_sent_total[5m]))",
+          "legendFormat": "{{event_type}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "PDF Generation Duration (p95)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2, "fillOpacity": 8 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(billflow_pdf_generation_seconds_bucket[5m]))",
+          "legendFormat": "p95 PDF generation"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(billflow_pdf_generation_seconds_bucket[5m]))",
+          "legendFormat": "p50 PDF generation"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Rate Limit Rejections",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 12
+          },
+          "color": { "fixedColor": "orange", "mode": "fixed" }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (route) (rate(billflow_rate_limit_rejections_total[2m]))",
+          "legendFormat": "{{route}}"
+        }
+      ]
+    }
+  ]
+}

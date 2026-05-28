@@ -1,5 +1,6 @@
 using BillFlow.Contracts.Health;
 using BillFlow.Contracts.Logging;
+using BillFlow.Contracts.Metrics;
 using BillFlow.NotificationService.Consumers;
 using BillFlow.NotificationService.Data;
 using BillFlow.NotificationService.Services;
@@ -15,10 +16,14 @@ const string ServiceName = "NotificationService";
 //      "NotificationService" in respective services
 
 SerilogBootstrap.Configure(ServiceName);
+
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+
     SerilogBootstrap.ConfigureBuilder(builder, ServiceName);
+    builder.Services.AddBillFlowMetrics(ServiceName);
+
     builder.Services.AddControllers();
     builder.Services.AddEndpointsApiExplorer();
 
@@ -29,34 +34,40 @@ try
             sql => sql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null)
         )
     );
+
     // ── Health checks ─────────────────────────────────────────────────────────
     builder.Services.AddHealthChecks()
-    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
-    .AddDbContextCheck<NotificationDbContext>(
-        name: "database", tags: ["ready"])
-    .AddCheck("rabbitmq", () =>
-    {
-        // Check if RabbitMQ container is reachable
-        try
+        .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
+        .AddDbContextCheck<NotificationDbContext>(
+            name: "database",
+            tags: ["ready"])
+        .AddCheck("rabbitmq", () =>
         {
-            using var tcp = new System.Net.Sockets.TcpClient();
-            tcp.Connect("localhost", 5672);
-            return HealthCheckResult.Healthy("RabbitMQ reachable");
-        }
-        catch (Exception ex)
-        {
-            return HealthCheckResult.Unhealthy("RabbitMQ unreachable", ex);
-        }
-    }, tags: ["ready"]);
+            // Check if RabbitMQ container is reachable
+            try
+            {
+                using var tcp = new System.Net.Sockets.TcpClient();
+                tcp.Connect("localhost", 5672);
+
+                return HealthCheckResult.Healthy("RabbitMQ reachable");
+            }
+            catch (Exception ex)
+            {
+                return HealthCheckResult.Unhealthy("RabbitMQ unreachable", ex);
+            }
+        }, tags: ["ready"]);
+
     // Services
     builder.Services.AddScoped<IEmailService, SendGridEmailService>();
     builder.Services.AddScoped<INotificationService, NotificationService>();
+
     // ✓ Add — GetCompanyNameAsync calls /tenant/:slug for email branding
     builder.Services.AddHttpClient("TenantService", client =>
     {
         client.BaseAddress = new Uri(
             builder.Configuration["ServiceUrls:TenantService"]
             ?? "https://localhost:5001");
+
         client.Timeout = TimeSpan.FromSeconds(10);
     })
     .AddResilienceHandler("tenant-pipeline", pipeline =>
@@ -68,6 +79,7 @@ try
             Delay = TimeSpan.FromMilliseconds(500),
             UseJitter = true
         });
+
         pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
         {
             FailureRatio = 0.5,
@@ -75,8 +87,10 @@ try
             MinimumThroughput = 5,
             BreakDuration = TimeSpan.FromSeconds(15)
         });
+
         pipeline.AddTimeout(TimeSpan.FromSeconds(5));
     });
+
     // RabbitMQ consumer — runs for app lifetime
     builder.Services.AddHostedService<InvoiceEventConsumer>();
 
@@ -85,8 +99,12 @@ try
     app.UseMiddleware<ServiceCorrelationMiddleware>();
 
     app.UseHttpsRedirection();
+    app.UseBillFlowMetrics();
+
     app.UseAuthorization();
+
     app.MapControllers();
+
     app.MapHealthChecks("/health/live", new HealthCheckOptions
     {
         ResponseWriter = HealthCheckResponseWriter.Options.ResponseWriter,
@@ -102,10 +120,10 @@ try
         Predicate = check => check.Tags.Contains("ready")
     });
 
-
     // Combined — what the gateway currently calls
     app.MapHealthChecks("/health",
         HealthCheckResponseWriter.Options);
+
     app.Run();
 }
 catch (Exception ex)

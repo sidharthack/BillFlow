@@ -1,5 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { clsx } from 'clsx';
+import { useInvoices } from '../../hooks/useInvoices';
+
 import {
   LayoutDashboard,
   Users,
@@ -18,6 +20,8 @@ const nav = [
 ];
 
 export function Sidebar() {
+  const { data: invoices = [] } = useInvoices();
+  const overdueCount = invoices.filter(i => i.status === 'Overdue').length;
   const { user, logout } = useAuth();
 
   return (
@@ -33,22 +37,36 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1">
         {nav.map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              clsx(
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all',
-                isActive
-                  ? 'bg-primary-50 text-primary-600'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-              )
-            }
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            {label}
-          </NavLink>
-        ))}
+  <NavLink
+    key={to}
+    to={to}
+    className={({ isActive }) =>
+      clsx(
+        'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all',
+        isActive
+          ? 'bg-primary-50 text-primary-600'
+          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+      )
+    }
+  >
+    <div className="relative">
+      <Icon className="h-4 w-4 shrink-0" />
+      {/* Red dot for overdue invoices on the Invoices nav item */}
+      {label === 'Invoices' && overdueCount > 0 && (
+        <span className="absolute -top-1 -right-1 w-2 h-2
+                         bg-red-500 rounded-full" />
+      )}
+    </div>
+    {label}
+    {/* Count badge */}
+    {label === 'Invoices' && overdueCount > 0 && (
+      <span className="ml-auto text-xs bg-red-100 text-red-600
+                       px-1.5 py-0.5 rounded-full font-medium">
+        {overdueCount}
+      </span>
+    )}
+  </NavLink>
+))}
       </nav>
 
       {/* User footer */}

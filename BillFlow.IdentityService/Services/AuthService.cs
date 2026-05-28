@@ -1,4 +1,5 @@
-﻿using BillFlow.Contracts.Tenancy;
+﻿using BillFlow.Contracts.Metrics;
+using BillFlow.Contracts.Tenancy;
 using BillFlow.IdentityService.Data;
 using BillFlow.IdentityService.DTOs;
 using BillFlow.IdentityService.Models;
@@ -80,7 +81,11 @@ public class AuthService : IAuthService
 
         // Verify password — BCrypt handles timing-safe comparison
         if (user is null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        {
+            BillFlowMetrics.LoginAttempts.WithLabels("failure").Inc();
             throw new UnauthorizedAccessException("Invalid email or password");
+        }
+        BillFlowMetrics.LoginAttempts.WithLabels("success").Inc();
 
         user.LastLoginAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();

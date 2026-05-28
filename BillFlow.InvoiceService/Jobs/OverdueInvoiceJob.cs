@@ -1,8 +1,10 @@
 ﻿using BillFlow.Contracts.Events;
+using BillFlow.Contracts.Metrics;
 using BillFlow.InvoiceService.Data;
 using BillFlow.InvoiceService.Messaging;
 using BillFlow.InvoiceService.Models;
 using Microsoft.EntityFrameworkCore;
+using Prometheus;
 
 namespace BillFlow.InvoiceService.Jobs;
 
@@ -28,6 +30,8 @@ public class OverdueInvoiceJob
     /// </summary>
     public async Task ExecuteAsync()
     {
+        using var timer = BillFlowMetrics.OverdueJobDuration.NewTimer();
+
         var now = DateTime.UtcNow;
 
         _logger.LogInformation(

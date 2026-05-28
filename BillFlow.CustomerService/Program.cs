@@ -1,5 +1,6 @@
 using BillFlow.Contracts.Health;
 using BillFlow.Contracts.Logging;
+using BillFlow.Contracts.Metrics;
 using BillFlow.Contracts.Tenancy;
 using BillFlow.CustomerService.Data;
 using BillFlow.CustomerService.Middleware;
@@ -13,15 +14,19 @@ using Microsoft.IdentityModel.Tokens;
 using Polly;
 using Serilog;
 using System.Text;
+
 const string ServiceName = "CustomerService";
 // Use: "TenantService", "IdentityService", "CustomerService",
 //      "NotificationService" in respective services
 
 SerilogBootstrap.Configure(ServiceName);
+
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+
     SerilogBootstrap.ConfigureBuilder(builder, ServiceName);
+    builder.Services.AddBillFlowMetrics(ServiceName);
 
     builder.Services.AddControllers();
     builder.Services.AddEndpointsApiExplorer();
@@ -33,6 +38,7 @@ try
             sql => sql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null)
         )
     );
+
     // ── Health checks ─────────────────────────────────────────────────────────
     builder.Services.AddHealthChecks()
         // Liveness — is the process alive?
@@ -40,15 +46,16 @@ try
             tags: ["live"])
 
         // Readiness — can it serve traffic? (DB must be reachable)
-        .AddDbContextCheck<CustomerDbContext>(          // change per service:
-            name: "database",                      // AppDbContext, TenantDbContext,
-            tags: ["ready"],                       // IdentityDbContext, etc.
+        .AddDbContextCheck<CustomerDbContext>(
+            name: "database",
+            tags: ["ready"],
             customTestQuery: async (db, ct) =>
             {
                 // Actually query the DB — not just check connection
                 await db.Database.ExecuteSqlRawAsync("SELECT 1", ct);
                 return true;
             });
+
     // JWT
     var jwtSettings = builder.Configuration
         .GetSection("JwtSettings")
@@ -87,24 +94,26 @@ try
             builder.Configuration["ServiceUrls:TenantService"] ?? "https://localhost:5001");
         client.Timeout = TimeSpan.FromSeconds(10);
     })
-.AddResilienceHandler("tenant-pipeline", pipeline =>
-{
-    pipeline.AddRetry(new HttpRetryStrategyOptions
+    .AddResilienceHandler("tenant-pipeline", pipeline =>
     {
-        MaxRetryAttempts = 3,
-        BackoffType = DelayBackoffType.Exponential,
-        Delay = TimeSpan.FromMilliseconds(500),
-        UseJitter = true
+        pipeline.AddRetry(new HttpRetryStrategyOptions
+        {
+            MaxRetryAttempts = 3,
+            BackoffType = DelayBackoffType.Exponential,
+            Delay = TimeSpan.FromMilliseconds(500),
+            UseJitter = true
+        });
+
+        pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+        {
+            FailureRatio = 0.5,
+            SamplingDuration = TimeSpan.FromSeconds(30),
+            MinimumThroughput = 5,
+            BreakDuration = TimeSpan.FromSeconds(15)
+        });
+
+        pipeline.AddTimeout(TimeSpan.FromSeconds(5));
     });
-    pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
-    {
-        FailureRatio = 0.5,
-        SamplingDuration = TimeSpan.FromSeconds(30),
-        MinimumThroughput = 5,
-        BreakDuration = TimeSpan.FromSeconds(15)
-    });
-    pipeline.AddTimeout(TimeSpan.FromSeconds(5));
-});
 
     // Business services
     builder.Services.AddScoped<ICustomerService, CustomerService>();
@@ -112,13 +121,17 @@ try
     var app = builder.Build();
 
     app.UseHttpsRedirection();
+    app.UseBillFlowMetrics();
+
     app.UseMiddleware<ServiceCorrelationMiddleware>();
 
     app.UseMiddleware<RequestLoggingMiddleware>();
     app.UseAuthentication();
     app.UseMiddleware<TenantMiddleware>();
     app.UseAuthorization();
+
     app.MapControllers();
+
     // Liveness — Kubernetes restarts the pod if this fails
     app.MapHealthChecks("/health/live", new HealthCheckOptions
     {
@@ -135,11 +148,10 @@ try
         Predicate = check => check.Tags.Contains("ready")
     });
 
-
     // Combined — what the gateway currently calls
     app.MapHealthChecks("/health",
         HealthCheckResponseWriter.Options);
-    app.Run();
+
     app.Run();
 }
 catch (Exception ex)

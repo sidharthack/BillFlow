@@ -85,7 +85,31 @@ export function DashboardPage() {
           iconBg="bg-blue-50"
         />
       </div>
-
+{stats.totalInvoices === 0 && (
+  <div className="card p-8 mb-8 border-dashed border-2 border-gray-200
+                  flex flex-col items-center text-center">
+    <div className="rounded-full bg-primary-50 p-4 mb-4">
+      <FileText className="h-8 w-8 text-primary-500" />
+    </div>
+    <h3 className="text-base font-semibold text-gray-900 mb-1">
+      Create your first invoice
+    </h3>
+    <p className="text-sm text-gray-500 max-w-sm mb-6">
+      Add a customer, create an invoice, and get paid.
+      Your dashboard stats will appear here.
+    </p>
+    <div className="flex gap-3">
+      <a href="/customers" className="btn-secondary">
+        <Users className="h-4 w-4" />
+        Add Customer
+      </a>
+      <a href="/invoices" className="btn-primary">
+        <FileText className="h-4 w-4" />
+        Create Invoice
+      </a>
+    </div>
+  </div>
+)}
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
 
