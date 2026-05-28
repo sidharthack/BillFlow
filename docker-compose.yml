@@ -1,0 +1,384 @@
+networks:
+  billflow-network:
+    driver: bridge
+
+volumes:
+  sqlserver-data:
+  billflow-seq-data:
+  prometheus-data:
+  grafana-data:
+
+# ── Shared environment snippets ───────────────────────────────────────────
+x-sql-connection: &sql-connection
+  ConnectionStrings__DefaultConnection: >-
+    Server=billflow-sqlserver,1433;
+    User Id=SA;
+    Password=${SA_PASSWORD};
+    TrustServerCertificate=True
+
+x-jwt-settings: &jwt-settings
+  JwtSettings__SecretKey: ${JWT_SECRET}
+  JwtSettings__Issuer: ${JWT_ISSUER}
+  JwtSettings__Audience: ${JWT_AUDIENCE}
+
+x-rabbitmq-settings: &rabbitmq-settings
+  RabbitMq__Host: billflow-rabbitmq
+  RabbitMq__Port: "5672"
+  RabbitMq__Username: ${RABBITMQ_USER}
+  RabbitMq__Password: ${RABBITMQ_PASS}
+
+x-seq-settings: &seq-settings
+  Seq__Url: ${SEQ_URL}
+  Seq__ApiKey: ${SEQ_API_KEY}
+
+x-service-urls: &service-urls
+  ServiceUrls__TenantService: http://billflow-tenant:8080
+  ServiceUrls__CustomerService: http://billflow-customer:8080
+
+x-common-settings: &common-settings
+  ASPNETCORE_ENVIRONMENT: Production
+  DOTNET_RUNNING_IN_CONTAINER: "true"
+
+services:
+
+# ════════════════════════════════════════════════════════════════════════
+# INFRASTRUCTURE
+# ════════════════════════════════════════════════════════════════════════
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: billflow-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: ${SA_PASSWORD}
+      MSSQL_PID: Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    restart: unless-stopped
+    networks:
+      - billflow-network
+    healthcheck:
+      test: >
+        /opt/mssql-tools18/bin/sqlcmd
+        -S localhost -U SA -P "${SA_PASSWORD}" -No
+        -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: billflow-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    restart: unless-stopped
+    networks:
+      - billflow-network
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  seq:
+    image: datalust/seq:latest
+    container_name: billflow-seq
+    environment:
+      ACCEPT_EULA: "Y"
+      SEQ_FIRSTRUN_ADMINPASSWORD: StrongPassword123
+    ports:
+      - "5341:80"
+    volumes:
+      - billflow-seq-data:/data
+    restart: unless-stopped
+    networks:
+      - billflow-network
+    healthcheck:
+     test: ["CMD-SHELL", "curl -f http://localhost || curl -f http://localhost/api || exit 1"]
+     interval: 10s
+     timeout: 5s
+     retries: 10
+     start_period: 20s
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: billflow-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=7d'
+    restart: unless-stopped
+    networks:
+      - billflow-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: billflow-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "BillFlow@1234"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: >-
+        /var/lib/grafana/dashboards/overview.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards
+    restart: unless-stopped
+    networks:
+      - billflow-network
+    depends_on:
+      prometheus:
+        condition: service_healthy
+
+# ════════════════════════════════════════════════════════════════════════
+# MICROSERVICES
+# ════════════════════════════════════════════════════════════════════════
+
+  tenant:
+    image: billflow/tenant:dev
+    container_name: billflow-tenant
+    build:
+      context: .
+      dockerfile: Billflow.TenantService/Dockerfile
+    environment:
+      <<: [*common-settings, *seq-settings]
+      ConnectionStrings__DefaultConnection: >-
+        Server=billflow-sqlserver,1433;
+        Database=BillFlow_Tenants;
+        User Id=SA;
+        Password=${SA_PASSWORD};
+        TrustServerCertificate=True
+    networks:
+      - billflow-network
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      seq:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  identity:
+    image: billflow/identity:dev
+    container_name: billflow-identity
+    build:
+      context: .
+      dockerfile: BillFlow.IdentityService/Dockerfile
+    environment:
+      <<: [*common-settings, *jwt-settings, *seq-settings]
+      ConnectionStrings__DefaultConnection: >-
+        Server=billflow-sqlserver,1433;
+        Database=BillFlow_Identity;
+        User Id=SA;
+        Password=${SA_PASSWORD};
+        TrustServerCertificate=True
+      ServiceUrls__TenantService: http://billflow-tenant:8080
+    networks:
+      - billflow-network
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      tenant:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  customer:
+    image: billflow/customer:dev
+    container_name: billflow-customer
+    build:
+      context: .
+      dockerfile: BillFlow.CustomerService/Dockerfile
+    environment:
+      <<: [*common-settings, *jwt-settings, *seq-settings]
+      ConnectionStrings__DefaultConnection: >-
+        Server=billflow-sqlserver,1433;
+        Database=BillFlow_Customers;
+        User Id=SA;
+        Password=${SA_PASSWORD};
+        TrustServerCertificate=True
+      ServiceUrls__TenantService: http://billflow-tenant:8080
+    networks:
+      - billflow-network
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      tenant:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  invoice:
+    image: billflow/invoice:dev
+    container_name: billflow-invoice
+    build:
+      context: .
+      dockerfile: BillFlow.InvoiceService/Dockerfile
+    environment:
+      <<: [*common-settings, *jwt-settings,
+           *rabbitmq-settings, *seq-settings]
+      ConnectionStrings__DefaultConnection: >-
+        Server=billflow-sqlserver,1433;
+        Database=BillFlow_Invoices;
+        User Id=SA;
+        Password=${SA_PASSWORD};
+        TrustServerCertificate=True
+      ConnectionStrings__HangfireConnection: >-
+        Server=billflow-sqlserver,1433;
+        Database=BillFlow_Invoices;
+        User Id=SA;
+        Password=${SA_PASSWORD};
+        TrustServerCertificate=True
+      ServiceUrls__TenantService: http://billflow-tenant:8080
+      ServiceUrls__CustomerService: http://billflow-customer:8080
+    networks:
+      - billflow-network
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      tenant:
+        condition: service_healthy
+      customer:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  notification:
+    image: billflow/notification:dev
+    container_name: billflow-notification
+    build:
+      context: .
+      dockerfile: BillFlow.NotificationService/Dockerfile
+    environment:
+      <<: [*common-settings, *rabbitmq-settings, *seq-settings]
+      ConnectionStrings__DefaultConnection: >-
+        Server=billflow-sqlserver,1433;
+        Database=BillFlow_Notifications;
+        User Id=SA;
+        Password=${SA_PASSWORD};
+        TrustServerCertificate=True
+      ServiceUrls__TenantService: http://billflow-tenant:8080
+      SendGrid__ApiKey: ${SENDGRID_API_KEY}
+      SendGrid__FromEmail: ${SENDGRID_FROM_EMAIL}
+      SendGrid__FromName: ${SENDGRID_FROM_NAME}
+    networks:
+      - billflow-network
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      tenant:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  gateway:
+    image: billflow/gateway:dev
+    container_name: billflow-gateway
+    build:
+      context: .
+      dockerfile: BillFlow.Gateway/Dockerfile
+    ports:
+      - "5100:8080"
+    environment:
+      <<: [*common-settings, *seq-settings]
+      ReverseProxy__Clusters__invoice-cluster__Destinations__primary__Address: >-
+        http://billflow-invoice:8080
+      ReverseProxy__Clusters__tenant-cluster__Destinations__primary__Address: >-
+        http://billflow-tenant:8080
+      ReverseProxy__Clusters__identity-cluster__Destinations__primary__Address: >-
+        http://billflow-identity:8080
+      ReverseProxy__Clusters__customer-cluster__Destinations__primary__Address: >-
+        http://billflow-customer:8080
+      ReverseProxy__Clusters__notification-cluster__Destinations__primary__Address: >-
+        http://billflow-notification:8080
+    networks:
+      - billflow-network
+    depends_on:
+      invoice:
+        condition: service_healthy
+      tenant:
+        condition: service_healthy
+      identity:
+        condition: service_healthy
+      customer:
+        condition: service_healthy
+      notification:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health/gateway"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    image: billflow/frontend:dev
+    container_name: billflow-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    ports:
+      - "3000:80"
+    networks:
+      - billflow-network
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
