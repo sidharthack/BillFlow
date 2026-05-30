@@ -22,7 +22,7 @@ try
     builder.Services
         .AddReverseProxy()
         .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
-        .AddTransforms<GatewayTransformProvider>();
+        .AddTransformFactory<GatewayTransformProvider>(); // <─ Fix: Change AddTransforms to AddTransformFactory
 
     // ── Rate limiting ─────────────────────────────────────────────────────────
     var rateLimitConfig = builder.Configuration.GetSection("RateLimiting");
