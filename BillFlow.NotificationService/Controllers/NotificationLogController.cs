@@ -35,6 +35,7 @@ public class NotificationLogController : ControllerBase
                 n.RecipientEmail,
                 n.Subject,
                 n.Status,
+                n.Body,              // ← ADD
                 n.RetryCount,
                 n.CreatedAt,
                 n.SentAt,

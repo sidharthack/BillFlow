@@ -8,13 +8,9 @@ namespace BillFlow.NotificationService.Templates;
 
 public static class EmailTemplates
 {
-    private static string Wrap(string companyName, string content) => $$"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <style>
+    private static string Wrap(string companyName, string content)
+    {
+        var style = @"
         body { font-family: Arial, sans-serif; background: #f5f5f5; margin: 0; padding: 0; }
         .container { max-width: 600px; margin: 40px auto; background: #fff;
                      border-radius: 8px; overflow: hidden;
@@ -34,28 +30,25 @@ public static class EmailTemplates
         .detail-row:last-child { border-bottom: none; }
         .detail-label { color: #6b7280; font-size: 13px; }
         .detail-value { color: #1f2937; font-size: 13px; font-weight: 500; }
-        .btn { display: inline-block; background: #6366F1; color: #fff;
-               padding: 12px 28px; border-radius: 6px; text-decoration: none;
-               font-weight: 600; font-size: 14px; margin-top: 20px; }
         .footer { background: #f9fafb; padding: 20px 32px;
                   font-size: 12px; color: #9ca3af; text-align: center; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          < h1 >{{companyName}}</ h1 >
-          < p > Invoice Management </ p >
-        </ div >
-        < div class= "body" >{ { content} }</ div >
-        < div class= "footer" >
-          This email was sent by {{companyName}} via BillFlow.
-          Please do not reply to this email.
-        </div>
-      </div>
-    </body>
-    </html>
-    """;
+    ";
+
+        return "<!DOCTYPE html>" +
+               "<html><head><meta charset='utf-8'>" +
+               "<meta name='viewport' content='width=device-width, initial-scale=1.0'>" +
+               "<style>" + style + "</style></head><body>" +
+               "<div class='container'>" +
+               "<div class='header'>" +
+               "<h1>" + companyName + "</h1>" +
+               "<p>Invoice Management</p>" +
+               "</div>" +
+               "<div class='body'>" + content + "</div>" +
+               "<div class='footer'>" +
+               "This email was sent by " + companyName + " via BillFlow. " +
+               "Please do not reply to this email." +
+               "</div></div></body></html>";
+    }
 
     public static (string Subject, string Html) InvoiceCreated(
         string companyName,

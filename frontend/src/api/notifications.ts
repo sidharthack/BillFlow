@@ -6,6 +6,7 @@ export interface NotificationLog {
   eventType: string;
   recipientEmail: string;
   subject: string;
+  body: string;           // ← ADD
   status: string;
   retryCount: number;
   createdAt: string;
