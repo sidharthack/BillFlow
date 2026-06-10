@@ -48,7 +48,17 @@ export const authApi = {
     return res.data;
   },
 
-  logout: () => {
+  logout: async () => {
+    const refreshToken = localStorage.getItem('refreshToken');
+
+    if (refreshToken) {
+      try {
+        await apiClient.post('/auth/revoke', { refreshToken });
+      } catch (err) {
+        console.warn('Unable to revoke refresh token:', err);
+      }
+    }
+
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
