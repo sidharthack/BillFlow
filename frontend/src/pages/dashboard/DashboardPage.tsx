@@ -19,6 +19,7 @@ import { formatCurrency } from '../../utils/format';
 export function DashboardPage() {
   const { user } = useAuth();
   const { stats, isLoading, isError } = useDashboard();
+  const currency = user?.tenantSettings?.currency || 'INR';
 
   if (isLoading) {
     return (
@@ -50,7 +51,7 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard
           title="Total Revenue"
-          value={formatCurrency(stats.totalRevenue)}
+          value={formatCurrency(stats.totalRevenue, currency)}
           subtitle={`${stats.paidCount} paid invoices`}
           icon={TrendingUp}
           iconColor="text-green-600"
@@ -69,7 +70,7 @@ export function DashboardPage() {
           value={stats.overdueCount.toString()}
           subtitle={
             stats.overdueCount > 0
-              ? formatCurrency(stats.overdueAmount) + ' at risk'
+              ? formatCurrency(stats.overdueAmount, currency) + ' at risk'
               : 'Nothing overdue'
           }
           icon={AlertTriangle}
@@ -124,7 +125,7 @@ export function DashboardPage() {
             </div>
             <TrendingUp className="h-4 w-4 text-gray-300" />
           </div>
-          <RevenueChart data={stats.monthlyRevenue} />
+          <RevenueChart data={stats.monthlyRevenue} currency={currency} />
         </div>
 
         {/* Status breakdown — takes 1/3 width */}

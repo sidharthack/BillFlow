@@ -19,6 +19,7 @@ export interface UserInfo {
   role: string;
   tenantSlug: string;
   tenantId: number;
+  tenantSettings?: TenantSettings;
 }
 
 // ── Tenant ────────────────────────────────────────────────────────────────

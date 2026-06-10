@@ -4,6 +4,7 @@ import type { Resolver } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus, Trash2, Calculator } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 import { useCustomers } from '../../hooks/useCustomers';
 import { Spinner } from '../../components/ui/Spinner';
 import { formatCurrency } from '../../utils/format';
@@ -29,6 +30,8 @@ interface Props {
 }
 
 export function CreateInvoiceForm({ onSubmit, isLoading }: Props) {
+  const { user } = useAuth();
+  const currency = user?.tenantSettings?.currency || 'INR';
   const { data: customers = [], isLoading: loadingCustomers } = useCustomers();
   const [taxRate] = useState(0.18); // pulled from tenant settings in future
 
@@ -201,7 +204,7 @@ export function CreateInvoiceForm({ onSubmit, isLoading }: Props) {
                 {amt > 0 && (
                   <div className="col-span-12 -mt-1 pr-8 text-right">
                     <span className="text-xs text-gray-400">
-                      = {formatCurrency(amt)}
+                      = {formatCurrency(amt, currency)}
                     </span>
                   </div>
                 )}
@@ -216,16 +219,16 @@ export function CreateInvoiceForm({ onSubmit, isLoading }: Props) {
         <div className="rounded-lg bg-gray-50 p-4 space-y-2">
           <div className="flex justify-between text-sm text-gray-600">
             <span>Subtotal</span>
-            <span className="font-medium">{formatCurrency(subTotal)}</span>
+            <span className="font-medium">{formatCurrency(subTotal, currency)}</span>
           </div>
           <div className="flex justify-between text-sm text-gray-600">
             <span>GST ({(taxRate * 100).toFixed(0)}%)</span>
-            <span className="font-medium">{formatCurrency(taxAmount)}</span>
+            <span className="font-medium">{formatCurrency(taxAmount, currency)}</span>
           </div>
           <div className="flex justify-between text-base font-bold
                           text-gray-900 pt-2 border-t border-gray-200">
             <span>Total</span>
-            <span className="text-primary-600">{formatCurrency(total)}</span>
+            <span className="text-primary-600">{formatCurrency(total, currency)}</span>
           </div>
         </div>
       )}

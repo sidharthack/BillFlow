@@ -7,20 +7,20 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, getCurrencySymbol } from '../../utils/format';
 
 interface Props {
   data: { month: string; revenue: number; count: number }[];
   currency?: string;
 }
 
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label, currency }: any) {
   if (!active || !payload?.length) return null;
   return (
     <div className="card px-4 py-3 shadow-lg text-sm">
       <p className="font-semibold text-gray-900 mb-1">{label}</p>
       <p className="text-primary-600">
-        {formatCurrency(payload[0].value)}
+        {formatCurrency(payload[0].value, currency || 'INR')}
       </p>
       <p className="text-gray-400 text-xs">
         {payload[0].payload.count} invoice
@@ -30,8 +30,9 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
-export function RevenueChart({ data }: Props) {
+export function RevenueChart({ data, currency = 'INR' }: Props) {
   const hasData = data.some(d => d.revenue > 0);
+  const symbol = getCurrencySymbol(currency);
 
   if (!hasData) {
     return (
@@ -52,13 +53,13 @@ export function RevenueChart({ data }: Props) {
           tickLine={false}
         />
         <YAxis
-          tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`}
+          tickFormatter={v => `${symbol}${(v / 1000).toFixed(0)}k`}
           tick={{ fontSize: 12, fill: '#9ca3af' }}
           axisLine={false}
           tickLine={false}
           width={52}
         />
-        <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f0f0ff' }} />
+        <Tooltip content={<CustomTooltip currency={currency} />} cursor={{ fill: '#f0f0ff' }} />
         <Bar dataKey="revenue" fill="#6366f1" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>

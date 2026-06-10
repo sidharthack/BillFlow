@@ -8,13 +8,14 @@ import {
 import type { JSX, ReactNode } from 'react';
 import type { UserInfo } from '../types';
 import { authApi } from '../api/auth';
+import { tenantApi } from '../api/tenant';
 
 interface AuthContextType {
   user: UserInfo | null;
   token: string | null;
   isLoading: boolean;
-  login: (token: string, refreshToken: string, user: UserInfo) => void;
-  logout: () => void;
+  login: (token: string, refreshToken: string, user: UserInfo) => Promise<void>;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -43,18 +44,35 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
   }, []);
 
   const login = useCallback(
-    (accessToken: string, refreshToken: string, userInfo: UserInfo) => {
-      localStorage.setItem('accessToken', accessToken);
-      localStorage.setItem('refreshToken', refreshToken);
-      localStorage.setItem('user', JSON.stringify(userInfo));
-      setToken(accessToken);
-      setUser(userInfo);
+    async (accessToken: string, refreshToken: string, userInfo: UserInfo) => {
+      try {
+        // Fetch tenant settings
+        const tenant = await tenantApi.getCurrent(userInfo.tenantSlug);
+        const enrichedUser = {
+          ...userInfo,
+          tenantSettings: tenant.settings,
+        };
+
+        localStorage.setItem('accessToken', accessToken);
+        localStorage.setItem('refreshToken', refreshToken);
+        localStorage.setItem('user', JSON.stringify(enrichedUser));
+        setToken(accessToken);
+        setUser(enrichedUser);
+      } catch (err) {
+        console.error('Failed to fetch tenant settings:', err);
+        // Still set user even if tenant fetch fails
+        localStorage.setItem('accessToken', accessToken);
+        localStorage.setItem('refreshToken', refreshToken);
+        localStorage.setItem('user', JSON.stringify(userInfo));
+        setToken(accessToken);
+        setUser(userInfo);
+      }
     },
     []
   );
 
-  const logout = useCallback(() => {
-    authApi.logout();
+  const logout = useCallback(async () => {
+    await authApi.logout();
     setToken(null);
     setUser(null);
   }, []);
