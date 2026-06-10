@@ -136,6 +136,7 @@ public class NotificationService : INotificationService
             RecipientEmail = toEmail,
             RecipientName = toName,
             Subject = subject,
+            Body = html,          // ← ADD
             EventPayload = payload,
             Status = NotificationStatus.Pending,
             CreatedAt = DateTime.UtcNow

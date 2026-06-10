@@ -10,7 +10,7 @@ public class NotificationLog
     public string RecipientEmail { get; set; } = string.Empty;
     public string RecipientName { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;
-
+    public string Body { get; set; } = string.Empty;    // ← ADD
     public NotificationStatus Status { get; set; } = NotificationStatus.Pending;
     public string? ErrorMessage { get; set; }
     public int RetryCount { get; set; } = 0;
