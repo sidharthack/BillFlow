@@ -1,10 +1,10 @@
+import { useState } from 'react';
 import {
   Building2, Mail, Globe, FileText,
   Percent, Bell, RefreshCw, CheckCircle,
   XCircle, Clock, ChevronDown, ChevronUp,
   Eye, X,
 } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTenant, useNotificationLogs } from '../../hooks/useSettings';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -357,8 +357,8 @@ function EmailPreviewModal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl
-                   max-h-[90vh] flex flex-col overflow-hidden"
+        className="fixed inset-4 bg-white z-50
+            flex flex-col overflow-hidden rounded-xl shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
         {/* Modal header */}
@@ -433,18 +433,23 @@ function EmailPreviewModal({
 
         {/* Email body rendered in iframe */}
         <div className="flex-1 overflow-hidden">
-         {log.body ? (
-          <EmailIframe html={log.body} />
-             ) : (
-              <div className="flex flex-col items-center justify-center
-                   h-48 text-sm text-gray-400">
-                   <Mail className="h-8 w-8 mb-2 text-gray-300" />
-                    <p>No email body recorded.</p>
-                   <p className="text-xs mt-1">
-                   Redeploy NotificationService to capture email HTML.
-                   </p>
-               </div>
-      )}
+          {log.body ? (
+            <iframe
+              srcDoc={log.body}
+              className="w-full h-full border-0"
+              title="Email Preview"
+              sandbox="allow-same-origin"
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center
+                            h-48 text-sm text-gray-400">
+              <Mail className="h-8 w-8 mb-2 text-gray-300" />
+              <p>No email body recorded.</p>
+              <p className="text-xs mt-1">
+                Redeploy NotificationService to capture email HTML.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Footer note */}
@@ -462,44 +467,7 @@ function EmailPreviewModal({
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────
-function EmailIframe({ html }: { html: string }) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-
-    // Write HTML directly into the iframe document
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!doc) return;
-
-    doc.open();
-    doc.write(html);
-    doc.close();
-
-    // Auto-resize iframe to content height
-    const resize = () => {
-      try {
-        const height = doc.body?.scrollHeight;
-        if (height && iframe) {
-          iframe.style.height = `${Math.min(height + 20, 500)}px`;
-        }
-      } catch { }
-    };
-
-    // Give it time to render then resize
-    setTimeout(resize, 100);
-  }, [html]);
-
-  return (
-    <iframe
-      ref={iframeRef}
-      className="w-full border-0 bg-white"
-      style={{ minHeight: '300px' }}
-      title="Email Preview"
-    />
-  );
-}
 function InfoRow({ icon: Icon, label, value }: {
   icon: React.ElementType; label: string; value: string;
 }) {
