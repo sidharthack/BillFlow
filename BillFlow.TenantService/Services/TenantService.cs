@@ -66,7 +66,10 @@ public class TenantService : ITenantService
                 CompanyName = request.CompanyName ?? request.Name,
                 Currency = request.Currency,
                 CountryCode = request.CountryCode,
-                DefaultTaxRate = 0.18m,
+
+                // ← Auto-set 18% GST for India, 0% for others
+                DefaultTaxRate = request.CountryCode == "IN" ? 0.18m : 0.0m,
+
                 InvoicePrefix = "INV",
                 InvoiceSequence = 1
             }

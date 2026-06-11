@@ -28,9 +28,9 @@ export function InvoiceDetail({ invoice }: Props) {
   const [pendingAction, setPendingAction] =
     useState<TransitionAction | null>(null);
 
-  const toast      = useToast();
+  const toast = useToast();
   const transition = useTransitionInvoice();
-  const download   = useDownloadPdf();
+  const download = useDownloadPdf();
 
   const actions = TRANSITION_ACTIONS[invoice.status as InvoiceStatus] ?? [];
 
@@ -38,9 +38,9 @@ export function InvoiceDetail({ invoice }: Props) {
     if (!pendingAction) return;
     try {
       await transition.mutateAsync({
-        id:       invoice.id,
+        id: invoice.id,
         toStatus: pendingAction.toStatus,
-        note:     `Manually set to ${pendingAction.toStatus}`,
+        note: `Manually set to ${pendingAction.toStatus}`,
       });
       toast.success(`Invoice ${pendingAction.toStatus.toLowerCase()}`);
       setPendingAction(null);
@@ -99,12 +99,12 @@ export function InvoiceDetail({ invoice }: Props) {
               onClick={() => setPendingAction(action)}
               disabled={transition.isPending}
               className={clsx('text-xs px-3 py-1.5', {
-                'btn-primary':   action.style === 'primary',
+                'btn-primary': action.style === 'primary',
                 'btn-secondary bg-green-600 text-white hover:bg-green-700 border-green-600':
-                                 action.style === 'success',
-                'btn-danger':    action.style === 'danger',
+                  action.style === 'success',
+                'btn-danger': action.style === 'danger',
                 'btn-secondary bg-amber-500 text-white hover:bg-amber-600 border-amber-500':
-                                 action.style === 'warning',
+                  action.style === 'warning',
               })}
             >
               {action.label}
@@ -225,8 +225,13 @@ export function InvoiceDetail({ invoice }: Props) {
             <span>Subtotal</span>
             <span>{formatCurrency(invoice.subTotal, invoice.currency)}</span>
           </div>
+      // Replace the tax row in totals
           <div className="flex justify-between text-gray-600">
-            <span>GST ({(invoice.taxRate * 100).toFixed(0)}%)</span>
+            <span>
+              {invoice.currency === 'INR'
+                ? `GST (${(invoice.taxRate * 100).toFixed(0)}%)`
+                : `Tax (${(invoice.taxRate * 100).toFixed(0)}%)`}
+            </span>
             <span>{formatCurrency(invoice.taxAmount, invoice.currency)}</span>
           </div>
           <div className="flex justify-between text-base font-bold

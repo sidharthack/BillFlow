@@ -38,8 +38,8 @@ const tenantSchema = z.object({
   name:        z.string().min(2, 'At least 2 characters'),
   ownerEmail:  z.string().email('Invalid email'),
   companyName: z.string().optional(),
-  currency:    z.string().default('INR'),
-  countryCode: z.string().default('IN'),
+  currency:    z.string().min(1, 'Currency is required'),
+  countryCode: z.string().min(1, 'Country is required'),
 });
 
 const userSchema = z.object({
@@ -51,7 +51,7 @@ const userSchema = z.object({
     .regex(/[0-9]/, 'Must contain a number')
     .regex(/[^A-Za-z0-9]/, 'Must contain a special character'),
   confirmPassword: z.string(),
-  role: z.enum(['Admin', 'Member', 'Viewer']).default('Admin'),
+  role: z.enum(['Admin', 'Member', 'Viewer']),
 }).refine(d => d.password === d.confirmPassword, {
   message: 'Passwords do not match',
   path: ['confirmPassword'],
@@ -59,6 +59,8 @@ const userSchema = z.object({
 
 type LoginData   = z.infer<typeof loginSchema>;
 type DevGateData = z.infer<typeof devGateSchema>;
+type TenantData  = z.infer<typeof tenantSchema>;
+type UserData    = z.infer<typeof userSchema>;
 type Mode = 'login' | 'dev-gate' | 'dev-portal'
           | 'register-tenant' | 'register-user';
 
@@ -871,13 +873,25 @@ function RegisterTenantForm({ error, onSuccess, onError, onBack }: {
   onError:   (m: string) => void;
   onBack:    () => void;
 }) {
-  const { register, handleSubmit, formState: { errors, isSubmitting } } =
-    useForm({
+  const { register, handleSubmit, watch, setValue,
+          formState: { errors, isSubmitting } } =
+    useForm<TenantData>({
       resolver: zodResolver(tenantSchema),
       defaultValues: { currency: 'INR', countryCode: 'IN' },
     });
 
-  const onSubmit = async (data: z.infer<typeof tenantSchema>) => {
+  const countryCode = watch('countryCode');
+  const isIndia     = countryCode === 'IN';
+
+  // Auto-set currency when country changes
+  useEffect(() => {
+    const currencyMap: Record<string, string> = {
+      IN: 'INR', US: 'USD', GB: 'GBP', SG: 'SGD', AU: 'AUD',
+    };
+    setValue('currency', currencyMap[countryCode] ?? 'USD');
+  }, [countryCode, setValue]);
+
+  const onSubmit = async (data: TenantData) => {
     onError('');
     try {
       const res = await authApi.registerTenant(data);
@@ -907,7 +921,7 @@ function RegisterTenantForm({ error, onSuccess, onError, onBack }: {
             Create organisation
           </h1>
         </div>
-        <p className="text-sm text-gray-500">Set up a new BillFlow workspace</p>
+        <p className="text-sm text-gray-500">Set up your BillFlow workspace</p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -918,9 +932,6 @@ function RegisterTenantForm({ error, onSuccess, onError, onBack }: {
           {errors.name && (
             <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>
           )}
-          <p className="text-xs text-gray-400 mt-1">
-            Workspace slug is auto-generated from this name
-          </p>
         </div>
 
         <div>
@@ -945,25 +956,40 @@ function RegisterTenantForm({ error, onSuccess, onError, onBack }: {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
+            <label className="label">Country</label>
+            <select className="input" {...register('countryCode')}>
+              <option value="IN">🇮🇳 India</option>
+              <option value="US">🇺🇸 United States</option>
+              <option value="GB">🇬🇧 United Kingdom</option>
+              <option value="SG">🇸🇬 Singapore</option>
+              <option value="AU">🇦🇺 Australia</option>
+            </select>
+          </div>
+          <div>
             <label className="label">Currency</label>
             <select className="input" {...register('currency')}>
               <option value="INR">INR — ₹ Rupee</option>
               <option value="USD">USD — $ Dollar</option>
               <option value="EUR">EUR — € Euro</option>
               <option value="GBP">GBP — £ Pound</option>
-            </select>
-          </div>
-          <div>
-            <label className="label">Country</label>
-            <select className="input" {...register('countryCode')}>
-              <option value="IN">India</option>
-              <option value="US">United States</option>
-              <option value="GB">United Kingdom</option>
-              <option value="SG">Singapore</option>
-              <option value="AU">Australia</option>
+              <option value="SGD">SGD — S$ Dollar</option>
+              <option value="AUD">AUD — A$ Dollar</option>
             </select>
           </div>
         </div>
+
+        {/* GST notice for India */}
+        {isIndia && (
+          <div className="flex items-start gap-2 p-3 rounded-lg
+                          bg-green-50 border border-green-100">
+            <span className="text-green-600 text-sm shrink-0">✓</span>
+            <p className="text-xs text-green-700">
+              <span className="font-semibold">18% GST</span> will be
+              automatically applied to all invoices.
+              GST Number and PAN fields will be available for customers.
+            </p>
+          </div>
+        )}
 
         {error && <ErrorAlert message={error} />}
 
@@ -988,12 +1014,12 @@ function RegisterUserForm({ tenantSlug, error, onSuccess, onError, onBack }: {
   onBack:    () => void;
 }) {
   const { register, handleSubmit, formState: { errors, isSubmitting } } =
-    useForm({
+    useForm<UserData>({
       resolver: zodResolver(userSchema),
       defaultValues: { role: 'Admin' },
     });
 
-  const onSubmit = async (data: z.infer<typeof userSchema>) => {
+  const onSubmit = async (data: UserData) => {
     onError('');
     try {
       const res = await authApi.registerUser({

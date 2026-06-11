@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import type { Resolver } from 'react-hook-form';
 import { z } from 'zod';
@@ -8,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useCustomers } from '../../hooks/useCustomers';
 import { Spinner } from '../../components/ui/Spinner';
 import { formatCurrency } from '../../utils/format';
+import { useTenant } from '../../hooks/useSettings';
 
 const lineItemSchema = z.object({
   description: z.string().min(1, 'Description required'),
@@ -30,10 +30,14 @@ interface Props {
 }
 
 export function CreateInvoiceForm({ onSubmit, isLoading }: Props) {
+   const { data: tenant } = useTenant();
+
+  const isIndia  = tenant?.settings?.countryCode === 'IN';
+  const taxRate  = tenant?.settings?.defaultTaxRate ?? 0;
+  const taxLabel = isIndia ? 'GST' : 'Tax';
   const { user } = useAuth();
   const currency = user?.tenantSettings?.currency || 'INR';
   const { data: customers = [], isLoading: loadingCustomers } = useCustomers();
-  const [taxRate] = useState(0.18); // pulled from tenant settings in future
 
   const {
     register,
@@ -60,9 +64,6 @@ export function CreateInvoiceForm({ onSubmit, isLoading }: Props) {
       sum + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0),
     0
   );
-  const taxAmount  = subTotal * taxRate;
-  const total      = subTotal + taxAmount;
-
   // Min due date = today
   const today = new Date().toISOString().split('T')[0];
 
@@ -215,23 +216,45 @@ export function CreateInvoiceForm({ onSubmit, isLoading }: Props) {
       </div>
 
       {/* Totals */}
-      {subTotal > 0 && (
-        <div className="rounded-lg bg-gray-50 p-4 space-y-2">
-          <div className="flex justify-between text-sm text-gray-600">
-            <span>Subtotal</span>
-            <span className="font-medium">{formatCurrency(subTotal, currency)}</span>
-          </div>
-          <div className="flex justify-between text-sm text-gray-600">
-            <span>GST ({(taxRate * 100).toFixed(0)}%)</span>
-            <span className="font-medium">{formatCurrency(taxAmount, currency)}</span>
-          </div>
-          <div className="flex justify-between text-base font-bold
-                          text-gray-900 pt-2 border-t border-gray-200">
-            <span>Total</span>
-            <span className="text-primary-600">{formatCurrency(total, currency)}</span>
-          </div>
+  {subTotal > 0 && (
+    <div className="rounded-lg bg-gray-50 p-4 space-y-2">
+      <div className="flex justify-between text-sm text-gray-600">
+        <span>Subtotal</span>
+        <span className="font-medium">{formatCurrency(subTotal, currency)}</span>
+      </div>
+
+      {taxRate > 0 && (
+        <div className="flex justify-between text-sm text-gray-600">
+          <span className="flex items-center gap-1">
+            {taxLabel} ({(taxRate * 100).toFixed(0)}%)
+            {isIndia && (
+              <span className="text-xs text-green-600 bg-green-50
+                               px-1.5 py-0.5 rounded">
+                as per GST
+              </span>
+            )}
+          </span>
+          <span className="font-medium">
+            {formatCurrency(subTotal * taxRate, currency)}
+          </span>
         </div>
       )}
+
+      <div className="flex justify-between text-base font-bold
+                      text-gray-900 pt-2 border-t border-gray-200">
+        <span>Total</span>
+        <span className="text-primary-600">
+          {formatCurrency(subTotal + (subTotal * taxRate), currency)}
+        </span>
+      </div>
+
+      {isIndia && (
+        <p className="text-xs text-gray-400 pt-1">
+          * Inclusive of 18% GST as per Indian tax regulations
+        </p>
+      )}
+    </div>
+  )}
 
       {/* Notes */}
       <div>
